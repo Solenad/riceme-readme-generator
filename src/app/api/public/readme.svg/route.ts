@@ -215,9 +215,9 @@ export async function GET(request: Request) {
   const showAscii = searchParams.get("ascii") !== "0";
   const showCrt = searchParams.get("crt") !== "0";
   const rawAscii = searchParams.get("ascii_art");
-const compressedAscii = searchParams.get("aa");
+  const compressedAscii = searchParams.get("aa");
   const customAscii = compressedAscii
-    ? LZString.decompressFromEncodedURIComponent(compressedAscii) ?? rawAscii
+    ? (LZString.decompressFromEncodedURIComponent(compressedAscii) ?? rawAscii)
     : rawAscii;
   const themeName = searchParams.get("theme") || "";
   const theme = getTheme(themeName);
