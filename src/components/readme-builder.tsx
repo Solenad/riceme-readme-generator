@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { motion } from "motion/react";
+import { lzStringEncode } from "@/lib/compress";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -203,6 +204,7 @@ export function ReadmeBuilder() {
   const [customAscii, setCustomAscii] = useState("");
   const [selectedTheme, setSelectedTheme] = useState(DEFAULT_THEME);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [compressedAscii, setCompressedAscii] = useState("");
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -236,6 +238,25 @@ export function ReadmeBuilder() {
   const debouncedAscii = useDebounce(customAscii, 500);
   const debouncedTheme = useDebounce(selectedTheme, 200);
 
+  // Compress ASCII art asynchronously — result feeds into buildPreviewUrl
+  useEffect(() => {
+    let cancelled = false;
+    if (!debouncedAscii) {
+      setCompressedAscii("");
+      return;
+    }
+    lzStringEncode(debouncedAscii)
+      .then((encoded) => {
+        if (!cancelled) setCompressedAscii(encoded);
+      })
+      .catch(() => {
+        if (!cancelled) setCompressedAscii("");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedAscii]);
+
   const previewUrl = buildPreviewUrl(
     origin,
     debouncedUsername,
@@ -244,6 +265,7 @@ export function ReadmeBuilder() {
     debouncedAscii,
     showCrt,
     debouncedTheme,
+    compressedAscii,
   );
 
   const updateField = useCallback((key: string, value: string) => {
@@ -277,6 +299,7 @@ export function ReadmeBuilder() {
     customAscii,
     showCrt,
     selectedTheme,
+    compressedAscii,
   );
   const markdown = `![${username}](${fullUrl})`;
   const html = `<p align="center">\n  <img src="${fullUrl}" alt="${username}" />\n</p>`;
@@ -547,6 +570,7 @@ function buildPreviewUrl(
   customAscii?: string,
   showCrt?: boolean,
   theme?: string,
+  compressedAscii?: string,
 ): string {
   const params = new URLSearchParams();
   params.set("username", username);
@@ -556,7 +580,11 @@ function buildPreviewUrl(
   for (const [key, value] of Object.entries(fields)) {
     params.set(key, value);
   }
-  if (customAscii) params.set("ascii_art", customAscii.replace(/\n/g, "\\n"));
+  if (compressedAscii) {
+    params.set("aa", compressedAscii);
+  } else if (customAscii) {
+    params.set("ascii_art", customAscii.replace(/\n/g, "\\n"));
+  }
   const base = origin || "http://localhost:3000";
   return `${base}/api/public/readme.svg?${params.toString()}`;
 }

@@ -9,7 +9,7 @@
 ![React 19](https://img.shields.io/badge/React-19-7e9cd8?style=for-the-badge)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-7e9cd8?style=for-the-badge)
 ![Tailwind CSS 4](https://img.shields.io/badge/Tailwind%20CSS-4-7e9cd8?style=for-the-badge)
-![GitHub Stars](https://img.shields.io/github/stars/Solenad/chiikawa-readme?style=for-the-badge&logo=github&color=7e9cd8)
+![GitHub Stars](https://img.shields.io/github/stars/Solenad/riceme-readme-generator?style=for-the-badge&logo=github&color=7e9cd8)
 
 </div>
 

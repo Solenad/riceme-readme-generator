@@ -1,4 +1,5 @@
-import { getTheme, type Theme } from "@/lib/themes"
+import LZString from "lz-string";
+import { getTheme, type Theme } from "@/lib/themes";
 
 const ASCII = `
 ⠀
@@ -25,21 +26,47 @@ const ASCII = `
 ⠀⠀⠀⠀⠀⠀⠀⠘⡿⣆⣼⡞⠈⠈⠉⠉⠙⠒⠓⠉⠉⠉⣽⣷⣠⣿⠃⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⠓⠁⠀⠀⠀⠀⠀⠀`;
 
-function getDefaultInfo(theme: Theme): Array<{ key: string; value: string; color: string }> {
+function getDefaultInfo(
+  theme: Theme,
+): Array<{ key: string; value: string; color: string }> {
   const p = theme.palette;
   return [
     { key: "distro", value: "Windows 11", color: p[0] },
     { key: "host", value: "Solenad", color: p[1] },
     { key: "uptime", value: "21 years", color: p[2] },
-    { key: "kernel", value: "Software Developer Intern @ Siklab, Tech Lead @ LSCS", color: p[3] },
-    { key: "school", value: "BS Computer Science @ De La Salle University Manila", color: p[4] },
+    {
+      key: "kernel",
+      value: "Software Developer Intern @ Siklab, Tech Lead @ LSCS",
+      color: p[3],
+    },
+    {
+      key: "school",
+      value: "BS Computer Science @ De La Salle University Manila",
+      color: p[4],
+    },
     { key: "shell", value: "PowerShell + WezTerm", color: p[5] },
     { key: "wm", value: "GlazeWM + Zebar", color: p[6] },
     { key: "editor", value: "Neovim", color: p[7] },
-    { key: "languages", value: "C, Java, JavaScript, TypeScript, Python, R", color: p[0] },
-    { key: "stack", value: "React, Next.js, Node.js, Express, Django", color: p[1] },
-    { key: "db", value: "PostgreSQL, MySQL, MongoDB, Redis, SQLite", color: p[2] },
-    { key: "tools", value: "Git, Docker, GitHub Actions, Contentful", color: p[3] },
+    {
+      key: "languages",
+      value: "C, Java, JavaScript, TypeScript, Python, R",
+      color: p[0],
+    },
+    {
+      key: "stack",
+      value: "React, Next.js, Node.js, Express, Django",
+      color: p[1],
+    },
+    {
+      key: "db",
+      value: "PostgreSQL, MySQL, MongoDB, Redis, SQLite",
+      color: p[2],
+    },
+    {
+      key: "tools",
+      value: "Git, Docker, GitHub Actions, Contentful",
+      color: p[3],
+    },
     { key: "ai", value: "Opencode, Openspec", color: p[4] },
   ];
 }
@@ -183,10 +210,15 @@ function buildInfo(params: URLSearchParams, theme: Theme) {
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const rawUsername = searchParams.get("username");
-  const username = rawUsername === null ? "Solenad" : (rawUsername || "your-username");
+  const username =
+    rawUsername === null ? "Solenad" : rawUsername || "your-username";
   const showAscii = searchParams.get("ascii") !== "0";
   const showCrt = searchParams.get("crt") !== "0";
-  const customAscii = searchParams.get("ascii_art");
+  const rawAscii = searchParams.get("ascii_art");
+const compressedAscii = searchParams.get("aa");
+  const customAscii = compressedAscii
+    ? LZString.decompressFromEncodedURIComponent(compressedAscii) ?? rawAscii
+    : rawAscii;
   const themeName = searchParams.get("theme") || "";
   const theme = getTheme(themeName);
   const info = buildInfo(searchParams, theme);
@@ -200,11 +232,13 @@ export async function GET(request: Request) {
   const asciiSize = 11;
   const asciiLineH = 12;
   const asciiLines = showAscii
-    ? (customAscii ? customAscii.replace(/\\n/g, "\n").replace(/\r/g, "").split("\n") : ASCII.split("\n"))
+    ? customAscii
+      ? customAscii.replace(/\\n/g, "\n").replace(/\r/g, "").split("\n")
+      : ASCII.split("\n")
     : [];
 
   const monoCharW = asciiSize * 0.65;
-  const maxLineLen = Math.max(...asciiLines.map(l => l.length), 0);
+  const maxLineLen = Math.max(...asciiLines.map((l) => l.length), 0);
   const asciiWidthPx = maxLineLen * monoCharW;
   const infoX = showAscii ? asciiX + asciiWidthPx + 40 : 30;
   const sepEndX = W - 30;
@@ -326,20 +360,22 @@ export async function GET(request: Request) {
   <line x1="${infoX}" y1="${headerY + 22}" x2="${sepEndX}" y2="${headerY + 22}" stroke="${theme.card}" stroke-width="1.5"/>
 
   ${info
-        .map((row, i) => {
-          const y = rowStartY + i * rowH;
-          return `<g>
+      .map((row, i) => {
+        const y = rowStartY + i * rowH;
+        return `<g>
     <text x="${infoX}" y="${y}" font-size="13" font-weight="700" fill="${row.color}">${esc(row.key)}</text>
     <text x="${infoX + keyColW}" y="${y}" font-size="13" fill="${theme.fg}">${esc(row.value)}</text>
   </g>`;
-        })
-        .join("\n  ")}
+      })
+      .join("\n  ")}
 
   <g filter="url(#phosphor-glow)" transform="translate(${infoX}, ${rowStartY + info.length * rowH + 14})">
-    ${theme.palette.map(
-          (c, i) =>
-            `<circle cx="${i * 22 + 8}" cy="8" r="7" fill="${c}" class="pulse" style="animation-delay: ${i * 0.15}s"/>`,
-        ).join("\n    ")}
+    ${theme.palette
+      .map(
+        (c, i) =>
+          `<circle cx="${i * 22 + 8}" cy="8" r="7" fill="${c}" class="pulse" style="animation-delay: ${i * 0.15}s"/>`,
+      )
+      .join("\n    ")}
   </g>
 
   <text x="30" y="${statsY - 20}" fill="${theme.card}" font-size="13" xml:space="preserve">${"━".repeat(95)}</text>
@@ -348,15 +384,15 @@ export async function GET(request: Request) {
   </text>
 
   ${statCards
-        .map((s, i) => {
-          const x = cardStartX + i * (cardW + cardGap);
-          return `<g>
+      .map((s, i) => {
+        const x = cardStartX + i * (cardW + cardGap);
+        return `<g>
     <rect x="${x}" y="${statsY}" width="${cardW}" height="${cardH}" rx="8" fill="${theme.card}" stroke="${theme.border}"/>
     <text x="${x + 16}" y="${statsY + 50}" font-size="34" font-weight="700" fill="${s.color}" filter="url(#phosphor-glow)">${s.value.toLocaleString()}</text>
     <text x="${x + 16}" y="${statsY + 74}" font-size="12" fill="${theme.muted}">${esc(s.label)}</text>
   </g>`;
-        })
-        .join("\n  ")}
+      })
+      .join("\n  ")}
 
   <text x="30" y="${H - 30}" font-size="13" filter="url(#phosphor-glow)">
     <tspan fill="${theme.prompt}">~</tspan><tspan fill="${theme.muted}"> </tspan><tspan fill="${theme.promptAccent}">❯</tspan><tspan fill="${theme.muted}"> </tspan>
