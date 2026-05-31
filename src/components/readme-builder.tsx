@@ -245,13 +245,8 @@ export function ReadmeBuilder() {
       setCompressedAscii("");
       return;
     }
-    lzStringEncode(debouncedAscii)
-      .then((encoded) => {
-        if (!cancelled) setCompressedAscii(encoded);
-      })
-      .catch(() => {
-        if (!cancelled) setCompressedAscii("");
-      });
+    const encoded = lzStringEncode(debouncedAscii);
+    if (!cancelled) setCompressedAscii(encoded);
     return () => {
       cancelled = true;
     };
