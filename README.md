@@ -102,6 +102,8 @@ GET /api/public/readme.svg
 | `ascii_art` | string | — | Custom ASCII art |
 | `distro`, `host`, `uptime`, `kernel`, `school`, `shell`, `wm`, `editor`, `languages`, `stack`, `db`, `tools`, `ai` | string | — | Custom field values |
 
+Blank custom fields are omitted from the generated SVG, and long field values wrap within the card instead of overflowing past the right edge.
+
 ## Tech Stack
 
 | Layer | Technology |
