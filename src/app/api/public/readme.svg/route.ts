@@ -79,6 +79,38 @@ function esc(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
+function wrapText(value: string, maxChars: number): string[] {
+  const normalized = value.replace(/\s+/g, " ").trim();
+  if (!normalized) return [];
+
+  const lines: string[] = [];
+  let current = "";
+
+  for (const word of normalized.split(" ")) {
+    if (word.length > maxChars) {
+      if (current) {
+        lines.push(current);
+        current = "";
+      }
+      for (let i = 0; i < word.length; i += maxChars) {
+        lines.push(word.slice(i, i + maxChars));
+      }
+      continue;
+    }
+
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxChars) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = next;
+    }
+  }
+
+  if (current) lines.push(current);
+  return lines;
+}
+
 async function fetchStats(username: string) {
   try {
     const [uRes, rRes] = await Promise.all([
@@ -198,12 +230,13 @@ function genTwCSS(): string {
 }
 
 function buildInfo(params: URLSearchParams, theme: Theme) {
-  return getDefaultInfo(theme).map((row) => {
+  return getDefaultInfo(theme).flatMap((row) => {
     const paramVal = params.get(row.key);
     if (paramVal !== null) {
-      return { ...row, value: paramVal };
+      const value = paramVal.trim();
+      return value ? [{ ...row, value }] : [];
     }
-    return row;
+    return row.value.trim() ? [row] : [];
   });
 }
 
@@ -225,7 +258,6 @@ export async function GET(request: Request) {
   const stats = await fetchStats(username);
 
   const W = 900;
-  const H = 760;
 
   const asciiX = 30;
   const asciiY = 50;
@@ -245,13 +277,48 @@ export async function GET(request: Request) {
   const headerY = 70;
   const rowStartY = 120;
   const rowH = 26;
+  const rowGap = 8;
   const keyColW = 110;
+  const valueFontSize = 13;
+  const valueLineH = 17;
+  const valueCharW = valueFontSize * 0.62;
+  const maxValueWidth = Math.max(120, sepEndX - (infoX + keyColW));
+  const maxValueChars = Math.max(12, Math.floor(maxValueWidth / valueCharW));
 
-  const statsY = 540;
+  const renderedInfo = info.map((row) => ({
+    ...row,
+    valueLines: wrapText(row.value, maxValueChars),
+  }));
+
+  let nextInfoY = rowStartY;
+  const infoRows = renderedInfo
+    .map((row) => {
+      const y = nextInfoY;
+      const rowHeight = Math.max(rowH, row.valueLines.length * valueLineH);
+      nextInfoY += rowHeight + rowGap;
+
+      return `<g>
+    <text x="${infoX}" y="${y}" font-size="13" font-weight="700" fill="${row.color}">${esc(row.key)}</text>
+    <text x="${infoX + keyColW}" y="${y}" font-size="${valueFontSize}" fill="${theme.fg}">
+      ${row.valueLines
+        .map(
+          (line, i) =>
+            `<tspan x="${infoX + keyColW}" dy="${i === 0 ? 0 : valueLineH}">${esc(line)}</tspan>`,
+        )
+        .join("\n      ")}
+    </text>
+  </g>`;
+    })
+    .join("\n  ");
+
+  const paletteY = nextInfoY + 6;
+
   const cardW = 195;
   const cardH = 90;
   const cardGap = 20;
   const cardStartX = 30;
+  const statsY = Math.max(540, paletteY + 92);
+  const H = Math.max(760, statsY + cardH + 80);
 
   const p = theme.palette;
   const statCards = [
@@ -299,8 +366,8 @@ export async function GET(request: Request) {
       @keyframes beam-sweep {
         0%   { transform: translateY(-40px); }
         20%  { transform: translateY(-40px); }
-        85%  { transform: translateY(760px); }
-        100% { transform: translateY(760px); }
+        85%  { transform: translateY(${H}px); }
+        100% { transform: translateY(${H}px); }
       }
       .crt-beam { animation: beam-sweep 25s linear infinite; transform-origin: 0 0; pointer-events: none; mix-blend-mode: screen; }
     `
@@ -359,17 +426,9 @@ export async function GET(request: Request) {
   </text>
   <line x1="${infoX}" y1="${headerY + 22}" x2="${sepEndX}" y2="${headerY + 22}" stroke="${theme.card}" stroke-width="1.5"/>
 
-  ${info
-      .map((row, i) => {
-        const y = rowStartY + i * rowH;
-        return `<g>
-    <text x="${infoX}" y="${y}" font-size="13" font-weight="700" fill="${row.color}">${esc(row.key)}</text>
-    <text x="${infoX + keyColW}" y="${y}" font-size="13" fill="${theme.fg}">${esc(row.value)}</text>
-  </g>`;
-      })
-      .join("\n  ")}
+  ${infoRows}
 
-  <g filter="url(#phosphor-glow)" transform="translate(${infoX}, ${rowStartY + info.length * rowH + 14})">
+  <g filter="url(#phosphor-glow)" transform="translate(${infoX}, ${paletteY})">
     ${theme.palette
       .map(
         (c, i) =>
