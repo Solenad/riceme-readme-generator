@@ -124,7 +124,7 @@ Blank custom fields are omitted from the generated SVG, and long field values wr
 Contributions are welcome! Open an issue or pull request on [GitHub](https://github.com/Solenad/chiikawa-readme).
 
 <a href="https://github.com/Solenad/chiikawa-readme/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=Solenad/chiikawa-readme" />
+  <img src="https://contrib.rocks/image?repo=Solenad/riceme-readme-generator" />
 </a>
 
 ## License
