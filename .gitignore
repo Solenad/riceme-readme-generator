@@ -37,7 +37,6 @@ next-env.d.ts
 
 # agentic environment
 .opencode/
-openspec/
 .playwright-mcp/
 
 # OpenNext
