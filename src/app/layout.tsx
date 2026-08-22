@@ -36,13 +36,11 @@ export default function RootLayout({
               <div className="mx-auto max-w-7xl rounded-xl border-2 border-border bg-card/40 p-4 text-xs text-muted-foreground">
                 <p className="mb-1">
                   <span className="text-term-green">~</span>{" "}
-                  <span className="text-term-blue">❯ </span> RiceMe v1.0 · MIT
-                  License · &copy; 2025 Solenad
+                  <span className="text-term-blue">❯ </span> riceme · Solenad
                 </p>
                 <p>
                   <span className="text-term-green">~</span>{" "}
-                  <span className="text-term-blue">❯</span> built with Next.js +
-                  shadcn/ui ·{" "}
+                  <span className="text-term-blue">❯</span>{" "}
                   <a
                     href="https://github.com/Solenad/riceme-readme-generator"
                     target="_blank"
@@ -51,7 +49,7 @@ export default function RootLayout({
                   >
                     star on github
                   </a>{" "}
-                  |{" "}
+                  ·{" "}
                   <a
                     href="https://github.com/Solenad/riceme-readme-generator/issues"
                     target="_blank"

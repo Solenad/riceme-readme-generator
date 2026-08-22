@@ -3,7 +3,26 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { lzStringEncode } from "@/lib/compress";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -20,71 +39,27 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { THEMES, DEFAULT_THEME } from "@/lib/themes";
-
-const FIELD_DEFS = [
-  {
-    key: "distro",
-    label: "Distro",
-    color: "#8bd5ca",
-    placeholder: "Windows 11",
-  },
-  { key: "host", label: "Host", color: "#eed49f", placeholder: "Solenad" },
-  { key: "uptime", label: "Uptime", color: "#a6da95", placeholder: "21 years" },
-  {
-    key: "kernel",
-    label: "Kernel",
-    color: "#f5bde6",
-    placeholder: "Software Developer Intern...",
-  },
-  {
-    key: "school",
-    label: "School",
-    color: "#8aadf4",
-    placeholder: "BS Computer Science...",
-  },
-  {
-    key: "shell",
-    label: "Shell",
-    color: "#c6a0f6",
-    placeholder: "PowerShell + WezTerm",
-  },
-  { key: "wm", label: "WM", color: "#f5a97f", placeholder: "GlazeWM + Zebar" },
-  { key: "editor", label: "Editor", color: "#a6da95", placeholder: "Neovim" },
-  {
-    key: "languages",
-    label: "Languages",
-    color: "#91d7e3",
-    placeholder: "C, Java, JavaScript...",
-  },
-  {
-    key: "stack",
-    label: "Stack",
-    color: "#eed49f",
-    placeholder: "React, Next.js...",
-  },
-  {
-    key: "db",
-    label: "DB",
-    color: "#ee99a0",
-    placeholder: "PostgreSQL, MySQL...",
-  },
-  {
-    key: "tools",
-    label: "Tools",
-    color: "#b7bdf8",
-    placeholder: "Git, Docker...",
-  },
-  {
-    key: "ai",
-    label: "AI",
-    color: "#b7bdf8",
-    placeholder: "Opencode, Openspec",
-  },
-];
-
-const DEFAULT_VALUES: Record<string, string> = Object.fromEntries(
-  FIELD_DEFS.map((f) => [f.key, ""]),
-);
+import {
+  DEFAULT_FIELDS,
+  MAX_FIELDS,
+  addRowToFields,
+  duplicateRowInFields,
+  moveRowInFields,
+  removeRowFromFields,
+  resetFieldsToDefaults,
+  serializeFields,
+  toggleRowVisibility,
+  type InfoField,
+} from "@/lib/fields";
+import {
+  Copy,
+  Eye,
+  EyeOff,
+  GripVertical,
+  Plus,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 
 function yearsSince(dateStr: string): string {
   const created = new Date(dateStr);
@@ -196,15 +171,16 @@ export function ReadmeBuilder() {
   const [origin, setOrigin] = useState("");
   const [username, setUsername] = useState("");
   const [fetchTarget, setFetchTarget] = useState<string | null>(null);
-  const [fields, setFields] = useState<Record<string, string>>({
-    ...DEFAULT_VALUES,
-  });
+  const [fields, setFields] = useState<InfoField[]>(() =>
+    resetFieldsToDefaults(),
+  );
   const [showAscii, setShowAscii] = useState(true);
   const [showCrt, setShowCrt] = useState(true);
   const [customAscii, setCustomAscii] = useState("");
   const [selectedTheme, setSelectedTheme] = useState(DEFAULT_THEME);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [compressedAscii, setCompressedAscii] = useState("");
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -222,7 +198,11 @@ export function ReadmeBuilder() {
   useEffect(() => {
     if (profileQuery.data) {
       const mapped = mapProfileToFields(profileQuery.data);
-      setFields((prev) => ({ ...prev, ...mapped }));
+      setFields((prev) =>
+        prev.map((f) =>
+          mapped[f.id] !== undefined ? { ...f, value: mapped[f.id] } : f,
+        ),
+      );
       toast.success(`Fetched profile for ${fetchTarget}`, { duration: 2000 });
     }
   }, [profileQuery.data, fetchTarget]);
@@ -263,8 +243,37 @@ export function ReadmeBuilder() {
     compressedAscii,
   );
 
-  const updateField = useCallback((key: string, value: string) => {
-    setFields((prev) => ({ ...prev, [key]: value }));
+  const updateRow = useCallback(
+    (id: string, patch: Partial<Omit<InfoField, "id">>) => {
+      setFields((prev) =>
+        prev.map((f) => (f.id === id ? { ...f, ...patch } : f)),
+      );
+    },
+    [],
+  );
+
+  const addRow = useCallback(() => {
+    setFields((prev) => addRowToFields(prev));
+  }, []);
+
+  const removeRow = useCallback((id: string) => {
+    setFields((prev) => removeRowFromFields(prev, id));
+  }, []);
+
+  const moveRow = useCallback((id: string, dir: -1 | 1) => {
+    setFields((prev) => moveRowInFields(prev, id, dir));
+  }, []);
+
+  const duplicateRow = useCallback((id: string) => {
+    setFields((prev) => duplicateRowInFields(prev, id));
+  }, []);
+
+  const toggleVisible = useCallback((id: string) => {
+    setFields((prev) => toggleRowVisibility(prev, id));
+  }, []);
+
+  const resetFields = useCallback(() => {
+    setFields(resetFieldsToDefaults());
   }, []);
 
   const handleFetch = useCallback(() => {
@@ -285,6 +294,34 @@ export function ReadmeBuilder() {
       () => toast.error("Failed to copy"),
     );
   }, []);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(String(event.active.id));
+  }, []);
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      setActiveId(null);
+      const { active, over } = event;
+      if (over && active.id !== over.id) {
+        setFields((items) => {
+          const oldIndex = items.findIndex((f) => f.id === active.id);
+          const newIndex = items.findIndex((f) => f.id === over.id);
+          return arrayMove(items, oldIndex, newIndex);
+        });
+      }
+    },
+    [],
+  );
 
   const fullUrl = buildPreviewUrl(
     origin,
@@ -446,33 +483,103 @@ export function ReadmeBuilder() {
           )}
         </div>
 
-        <motion.div
-          className="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2"
-          variants={fieldGrid}
-          initial="hidden"
-          animate="show"
-        >
-          {FIELD_DEFS.map((field) => (
-            <motion.div key={field.key} variants={fieldItem}>
-              <Label
-                htmlFor={`field-${field.key}`}
-                className="mb-1 flex items-center gap-1.5 text-xs text-muted-foreground"
+        <motion.div className="space-y-3" variants={fieldGrid} initial="hidden" animate="show">
+          <div className="flex items-center justify-between">
+            <Label className="text-xs text-muted-foreground">
+              Info rows{" "}
+              <span className="font-mono">
+                ({fields.length}/{MAX_FIELDS})
+              </span>
+            </Label>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={resetFields}
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-xs"
               >
-                <span
-                  className="inline-block h-2 w-2 shrink-0 rounded-full"
-                  style={{ backgroundColor: field.color }}
-                />
-                {field.label}
-              </Label>
-              <Input
-                id={`field-${field.key}`}
-                value={fields[field.key] ?? ""}
-                onChange={(e) => updateField(field.key, e.target.value)}
-                placeholder={field.placeholder}
-                className="font-mono text-xs placeholder:text-muted-foreground/30"
-              />
-            </motion.div>
-          ))}
+                <RotateCcw className="h-3 w-3" />
+                Reset
+              </Button>
+              <Button
+                onClick={addRow}
+                disabled={fields.length >= MAX_FIELDS}
+                variant="outline"
+                size="sm"
+                className="h-7 gap-1.5 px-2 text-xs"
+              >
+                <Plus className="h-3 w-3" />
+                Add row
+              </Button>
+            </div>
+          </div>
+          <motion.div
+            className="max-h-[420px] space-y-2 overflow-y-auto pr-1"
+            variants={fieldGrid}
+            initial="hidden"
+            animate="show"
+          >
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={() => setActiveId(null)}
+            >
+              <SortableContext
+                items={fields.map((f) => f.id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <AnimatePresence>
+                  {fields.map((field, index) => (
+                    <SortableRow
+                      key={field.id}
+                      field={field}
+                      index={index}
+                      updateRow={updateRow}
+                      duplicateRow={duplicateRow}
+                      toggleVisible={toggleVisible}
+                      removeRow={removeRow}
+                      fieldsLength={fields.length}
+                    />
+                  ))}
+                </AnimatePresence>
+              </SortableContext>
+              <DragOverlay dropAnimation={null}>
+                {activeId ? (
+                  <div className="rounded-md border border-border bg-card p-2 shadow-xl ring-2 ring-term-cyan/30">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-6 shrink-0 text-right font-mono text-xs text-muted-foreground/50">
+                        {String(fields.findIndex((f) => f.id === activeId) + 1).padStart(2, "0")}
+                      </span>
+                      <GripVertical className="h-3 w-3 text-term-cyan/60" />
+                      <input
+                        type="color"
+                        value={fields.find((f) => f.id === activeId)?.color ?? "#fff"}
+                        readOnly
+                        className="h-5 w-6 shrink-0 cursor-pointer rounded border-none bg-transparent p-0"
+                      />
+                      <span className="h-7 flex-1 truncate rounded bg-card/60 px-2 font-mono text-xs">
+                        {fields.find((f) => f.id === activeId)?.label || (
+                          <span className="text-muted-foreground/30">Label</span>
+                        )}
+                      </span>
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <Eye className="h-3 w-3 text-muted-foreground/40" />
+                        <Copy className="h-3 w-3 text-muted-foreground/40" />
+                        <Trash2 className="h-3 w-3 text-muted-foreground/40" />
+                      </div>
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-1.5 pl-[52px]">
+                      <div className="h-8 flex-1 truncate rounded bg-card/60 px-2 font-mono text-xs text-muted-foreground/30">
+                        {fields.find((f) => f.id === activeId)?.value || "Value"}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </DragOverlay>
+            </DndContext>
+          </motion.div>
         </motion.div>
       </motion.div>
 
@@ -557,10 +664,155 @@ function Snippet({
   );
 }
 
+function RowIconButton({
+  onClick,
+  disabled,
+  label,
+  children,
+  className,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded border border-border/60 bg-card/50 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 ${className ?? ""}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SortableRow({
+  field,
+  index,
+  updateRow,
+  duplicateRow,
+  toggleVisible,
+  removeRow,
+  fieldsLength,
+}: {
+  field: InfoField;
+  index: number;
+  updateRow: (id: string, patch: Partial<Omit<InfoField, "id">>) => void;
+  duplicateRow: (id: string) => void;
+  toggleVisible: (id: string) => void;
+  removeRow: (id: string) => void;
+  fieldsLength: number;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: field.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0, transition: { duration: 0.15 } }}
+        transition={{ duration: 0.2 }}
+        className="rounded-md border border-border/60 bg-card/40 p-2"
+      >
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <span className="w-6 shrink-0 text-right font-mono text-xs text-muted-foreground/50">
+          {String(index + 1).padStart(2, "0")}
+        </span>
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          aria-label="Drag to reorder"
+          className="flex h-5 w-5 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground/30 hover:text-muted-foreground active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-3 w-3" />
+        </button>
+        <input
+          type="color"
+          value={field.color}
+          onChange={(e) =>
+            updateRow(field.id, { color: e.target.value })
+          }
+          title="Label color"
+          aria-label={`Color for ${field.id}`}
+          className="h-5 w-6 shrink-0 cursor-pointer rounded border-none bg-transparent p-0"
+        />
+        <Input
+          value={field.label}
+          maxLength={32}
+          onChange={(e) =>
+            updateRow(field.id, { label: e.target.value })
+          }
+          placeholder="Label"
+          aria-label={`Label for ${field.id}`}
+          className="h-7 flex-1 font-mono text-xs placeholder:text-muted-foreground/30"
+        />
+        <div className="flex shrink-0 items-center gap-0.5">
+          <RowIconButton
+            onClick={() => toggleVisible(field.id)}
+            label={field.visible ? "Hide row" : "Show row"}
+          >
+            {field.visible ? (
+              <Eye className="h-3 w-3" />
+            ) : (
+              <EyeOff className="h-3 w-3" />
+            )}
+          </RowIconButton>
+          <RowIconButton
+            onClick={() => duplicateRow(field.id)}
+            disabled={fieldsLength >= MAX_FIELDS}
+            label="Duplicate row"
+          >
+            <Copy className="h-3 w-3" />
+          </RowIconButton>
+          <RowIconButton
+            onClick={() => removeRow(field.id)}
+            label="Delete row"
+            className="hover:text-term-red"
+          >
+            <Trash2 className="h-3 w-3" />
+          </RowIconButton>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 pl-[52px]">
+        <Input
+          value={field.value}
+          onChange={(e) =>
+            updateRow(field.id, { value: e.target.value })
+          }
+          placeholder={field.placeholder ?? "Value"}
+          className="h-8 flex-1 font-mono text-xs placeholder:text-muted-foreground/30"
+        />
+      </div>
+      </motion.div>
+    </div>
+  );
+}
+
 function buildPreviewUrl(
   origin: string,
   username: string,
-  fields: Record<string, string>,
+  fields: InfoField[],
   showAscii: boolean,
   customAscii?: string,
   showCrt?: boolean,
@@ -572,7 +824,7 @@ function buildPreviewUrl(
   params.set("ascii", showAscii ? "1" : "0");
   params.set("crt", showCrt !== false ? "1" : "0");
   if (theme && theme !== DEFAULT_THEME) params.set("theme", theme);
-  for (const [key, value] of Object.entries(fields)) {
+  for (const [key, value] of serializeFields(fields)) {
     params.set(key, value);
   }
   if (compressedAscii) {
