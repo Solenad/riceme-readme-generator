@@ -1,5 +1,6 @@
 import LZString from "lz-string";
 import { getTheme, type Theme } from "@/lib/themes";
+import { parseFields } from "@/lib/fields";
 
 const ASCII = `
 ⠀
@@ -25,51 +26,6 @@ const ASCII = `
 ⠀⠀⠀⠀⠀⠀⠀⠸⣿⠃⢸⣶⣦⣤⣤⣄⣠⣀⣠⣀⣤⣤⣤⣶⠄⣿⡇⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠘⡿⣆⣼⡞⠈⠈⠉⠉⠙⠒⠓⠉⠉⠉⣽⣷⣠⣿⠃⠀⠀⠀⠀⠀⠀
 ⠀⠀⠀⠀⠀⠀⠀⠀⠈⠉⠈⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⠙⠓⠁⠀⠀⠀⠀⠀⠀`;
-
-function getDefaultInfo(
-  theme: Theme,
-): Array<{ key: string; value: string; color: string }> {
-  const p = theme.palette;
-  return [
-    { key: "distro", value: "Windows 11", color: p[0] },
-    { key: "host", value: "Solenad", color: p[1] },
-    { key: "uptime", value: "21 years", color: p[2] },
-    {
-      key: "kernel",
-      value: "Software Developer Intern @ Siklab, Tech Lead @ LSCS",
-      color: p[3],
-    },
-    {
-      key: "school",
-      value: "BS Computer Science @ De La Salle University Manila",
-      color: p[4],
-    },
-    { key: "shell", value: "PowerShell + WezTerm", color: p[5] },
-    { key: "wm", value: "GlazeWM + Zebar", color: p[6] },
-    { key: "editor", value: "Neovim", color: p[7] },
-    {
-      key: "languages",
-      value: "C, Java, JavaScript, TypeScript, Python, R",
-      color: p[0],
-    },
-    {
-      key: "stack",
-      value: "React, Next.js, Node.js, Express, Django",
-      color: p[1],
-    },
-    {
-      key: "db",
-      value: "PostgreSQL, MySQL, MongoDB, Redis, SQLite",
-      color: p[2],
-    },
-    {
-      key: "tools",
-      value: "Git, Docker, GitHub Actions, Contentful",
-      color: p[3],
-    },
-    { key: "ai", value: "Opencode, Openspec", color: p[4] },
-  ];
-}
 
 function esc(s: string): string {
   return s
@@ -230,14 +186,9 @@ function genTwCSS(): string {
 }
 
 function buildInfo(params: URLSearchParams, theme: Theme) {
-  return getDefaultInfo(theme).flatMap((row) => {
-    const paramVal = params.get(row.key);
-    if (paramVal !== null) {
-      const value = paramVal.trim();
-      return value ? [{ ...row, value }] : [];
-    }
-    return row.value.trim() ? [row] : [];
-  });
+  return parseFields(params, theme.palette).filter(
+    (row) => row.visible && row.value.trim().length > 0,
+  );
 }
 
 export async function GET(request: Request) {
@@ -278,7 +229,10 @@ export async function GET(request: Request) {
   const rowStartY = 120;
   const rowH = 26;
   const rowGap = 8;
-  const keyColW = 110;
+  const labelFontSize = 13;
+  const labelCharW = labelFontSize * 0.62;
+  const maxLabelLen = Math.max(...info.map((r) => r.label.length), 0);
+  const keyColW = Math.max(110, Math.ceil(maxLabelLen * labelCharW) + 12);
   const valueFontSize = 13;
   const valueLineH = 17;
   const valueCharW = valueFontSize * 0.62;
@@ -298,7 +252,7 @@ export async function GET(request: Request) {
       nextInfoY += rowHeight + rowGap;
 
       return `<g>
-    <text x="${infoX}" y="${y}" font-size="13" font-weight="700" fill="${row.color}">${esc(row.key)}</text>
+    <text x="${infoX}" y="${y}" font-size="${labelFontSize}" font-weight="700" fill="${row.color}">${esc(row.label)}</text>
     <text x="${infoX + keyColW}" y="${y}" font-size="${valueFontSize}" fill="${theme.fg}">
       ${row.valueLines
         .map(
@@ -422,7 +376,7 @@ export async function GET(request: Request) {
   ${asciiSection}
 
   <text x="${infoX}" y="${headerY}" font-size="24" font-weight="700" filter="url(#phosphor-glow)">
-    <tspan fill="${theme.host}">${esc(info.find((r) => r.key === "host")?.value || username)}</tspan>
+    <tspan fill="${theme.host}">${esc(info.find((r) => r.id === "host")?.value || username)}</tspan>
   </text>
   <line x1="${infoX}" y1="${headerY + 22}" x2="${sepEndX}" y2="${headerY + 22}" stroke="${theme.card}" stroke-width="1.5"/>
 
