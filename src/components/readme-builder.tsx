@@ -3,7 +3,26 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
+import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+  type DragStartEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { lzStringEncode } from "@/lib/compress";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -33,11 +52,10 @@ import {
   type InfoField,
 } from "@/lib/fields";
 import {
-  ArrowDown,
-  ArrowUp,
   Copy,
   Eye,
   EyeOff,
+  GripVertical,
   Plus,
   RotateCcw,
   Trash2,
@@ -154,7 +172,7 @@ export function ReadmeBuilder() {
   const [username, setUsername] = useState("");
   const [fetchTarget, setFetchTarget] = useState<string | null>(null);
   const [fields, setFields] = useState<InfoField[]>(() =>
-    DEFAULT_FIELDS.map((f) => ({ ...f, value: "" })),
+    resetFieldsToDefaults(),
   );
   const [showAscii, setShowAscii] = useState(true);
   const [showCrt, setShowCrt] = useState(true);
@@ -162,6 +180,7 @@ export function ReadmeBuilder() {
   const [selectedTheme, setSelectedTheme] = useState(DEFAULT_THEME);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [compressedAscii, setCompressedAscii] = useState("");
+  const [activeId, setActiveId] = useState<string | null>(null);
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -275,6 +294,34 @@ export function ReadmeBuilder() {
       () => toast.error("Failed to copy"),
     );
   }, []);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
+
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveId(String(event.active.id));
+  }, []);
+
+  const handleDragEnd = useCallback(
+    (event: DragEndEvent) => {
+      setActiveId(null);
+      const { active, over } = event;
+      if (over && active.id !== over.id) {
+        setFields((items) => {
+          const oldIndex = items.findIndex((f) => f.id === active.id);
+          const newIndex = items.findIndex((f) => f.id === over.id);
+          return arrayMove(items, oldIndex, newIndex);
+        });
+      }
+    },
+    [],
+  );
 
   const fullUrl = buildPreviewUrl(
     origin,
@@ -467,91 +514,71 @@ export function ReadmeBuilder() {
             </div>
           </div>
           <motion.div
-            className="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2"
+            className="max-h-[420px] space-y-2 overflow-y-auto pr-1"
             variants={fieldGrid}
             initial="hidden"
             animate="show"
           >
-            {fields.map((field, index) => (
-              <motion.div
-                key={field.id}
-                variants={fieldItem}
-                className="rounded-md border border-border/60 bg-card/40 p-2"
+            <DndContext
+              sensors={sensors}
+              collisionDetection={closestCenter}
+              onDragStart={handleDragStart}
+              onDragEnd={handleDragEnd}
+              onDragCancel={() => setActiveId(null)}
+            >
+              <SortableContext
+                items={fields.map((f) => f.id)}
+                strategy={verticalListSortingStrategy}
               >
-                <div className="mb-1.5 flex items-center gap-1.5">
-                  <input
-                    type="color"
-                    value={field.color}
-                    onChange={(e) =>
-                      updateRow(field.id, { color: e.target.value })
-                    }
-                    title="Label color"
-                    aria-label={`Color for ${field.id}`}
-                    className="h-5 w-6 shrink-0 cursor-pointer rounded border-none bg-transparent p-0"
-                  />
-                  <Input
-                    value={field.label}
-                    maxLength={32}
-                    onChange={(e) =>
-                      updateRow(field.id, { label: e.target.value })
-                    }
-                    placeholder="Label"
-                    aria-label={`Label for ${field.id}`}
-                    className="h-7 flex-1 font-mono text-xs placeholder:text-muted-foreground/30"
-                  />
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Input
-                    value={field.value}
-                    onChange={(e) =>
-                      updateRow(field.id, { value: e.target.value })
-                    }
-                    placeholder={field.placeholder ?? "Value"}
-                    className="h-8 flex-1 font-mono text-xs placeholder:text-muted-foreground/30"
-                  />
-                  <div className="flex shrink-0 items-center gap-0.5">
-                    <RowIconButton
-                      onClick={() => moveRow(field.id, -1)}
-                      disabled={index === 0}
-                      label="Move up"
-                    >
-                      <ArrowUp className="h-3 w-3" />
-                    </RowIconButton>
-                    <RowIconButton
-                      onClick={() => moveRow(field.id, 1)}
-                      disabled={index === fields.length - 1}
-                      label="Move down"
-                    >
-                      <ArrowDown className="h-3 w-3" />
-                    </RowIconButton>
-                    <RowIconButton
-                      onClick={() => toggleVisible(field.id)}
-                      label={field.visible ? "Hide row" : "Show row"}
-                    >
-                      {field.visible ? (
-                        <Eye className="h-3 w-3" />
-                      ) : (
-                        <EyeOff className="h-3 w-3" />
-                      )}
-                    </RowIconButton>
-                    <RowIconButton
-                      onClick={() => duplicateRow(field.id)}
-                      disabled={fields.length >= MAX_FIELDS}
-                      label="Duplicate row"
-                    >
-                      <Copy className="h-3 w-3" />
-                    </RowIconButton>
-                    <RowIconButton
-                      onClick={() => removeRow(field.id)}
-                      label="Delete row"
-                      className="hover:text-term-red"
-                    >
-                      <Trash2 className="h-3 w-3" />
-                    </RowIconButton>
+                <AnimatePresence>
+                  {fields.map((field, index) => (
+                    <SortableRow
+                      key={field.id}
+                      field={field}
+                      index={index}
+                      updateRow={updateRow}
+                      duplicateRow={duplicateRow}
+                      toggleVisible={toggleVisible}
+                      removeRow={removeRow}
+                      fieldsLength={fields.length}
+                    />
+                  ))}
+                </AnimatePresence>
+              </SortableContext>
+              <DragOverlay dropAnimation={null}>
+                {activeId ? (
+                  <div className="rounded-md border border-border bg-card p-2 shadow-xl ring-2 ring-term-cyan/30">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-6 shrink-0 text-right font-mono text-xs text-muted-foreground/50">
+                        {String(fields.findIndex((f) => f.id === activeId) + 1).padStart(2, "0")}
+                      </span>
+                      <GripVertical className="h-3 w-3 text-term-cyan/60" />
+                      <input
+                        type="color"
+                        value={fields.find((f) => f.id === activeId)?.color ?? "#fff"}
+                        readOnly
+                        className="h-5 w-6 shrink-0 cursor-pointer rounded border-none bg-transparent p-0"
+                      />
+                      <span className="h-7 flex-1 truncate rounded bg-card/60 px-2 font-mono text-xs">
+                        {fields.find((f) => f.id === activeId)?.label || (
+                          <span className="text-muted-foreground/30">Label</span>
+                        )}
+                      </span>
+                      <div className="flex shrink-0 items-center gap-0.5">
+                        <Eye className="h-3 w-3 text-muted-foreground/40" />
+                        <Copy className="h-3 w-3 text-muted-foreground/40" />
+                        <Trash2 className="h-3 w-3 text-muted-foreground/40" />
+                      </div>
+                    </div>
+                    <div className="mt-1.5 flex items-center gap-1.5 pl-[52px]">
+                      <div className="h-8 flex-1 truncate rounded bg-card/60 px-2 font-mono text-xs text-muted-foreground/30">
+                        {fields.find((f) => f.id === activeId)?.value || "Value"}
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </motion.div>
-            ))}
+                ) : null}
+              </DragOverlay>
+            </DndContext>
           </motion.div>
         </motion.div>
       </motion.div>
@@ -661,6 +688,124 @@ function RowIconButton({
     >
       {children}
     </button>
+  );
+}
+
+function SortableRow({
+  field,
+  index,
+  updateRow,
+  duplicateRow,
+  toggleVisible,
+  removeRow,
+  fieldsLength,
+}: {
+  field: InfoField;
+  index: number;
+  updateRow: (id: string, patch: Partial<Omit<InfoField, "id">>) => void;
+  duplicateRow: (id: string) => void;
+  toggleVisible: (id: string) => void;
+  removeRow: (id: string) => void;
+  fieldsLength: number;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: field.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0, transition: { duration: 0.15 } }}
+        transition={{ duration: 0.2 }}
+        className="rounded-md border border-border/60 bg-card/40 p-2"
+      >
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <span className="w-6 shrink-0 text-right font-mono text-xs text-muted-foreground/50">
+          {String(index + 1).padStart(2, "0")}
+        </span>
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          aria-label="Drag to reorder"
+          className="flex h-5 w-5 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground/30 hover:text-muted-foreground active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-3 w-3" />
+        </button>
+        <input
+          type="color"
+          value={field.color}
+          onChange={(e) =>
+            updateRow(field.id, { color: e.target.value })
+          }
+          title="Label color"
+          aria-label={`Color for ${field.id}`}
+          className="h-5 w-6 shrink-0 cursor-pointer rounded border-none bg-transparent p-0"
+        />
+        <Input
+          value={field.label}
+          maxLength={32}
+          onChange={(e) =>
+            updateRow(field.id, { label: e.target.value })
+          }
+          placeholder="Label"
+          aria-label={`Label for ${field.id}`}
+          className="h-7 flex-1 font-mono text-xs placeholder:text-muted-foreground/30"
+        />
+        <div className="flex shrink-0 items-center gap-0.5">
+          <RowIconButton
+            onClick={() => toggleVisible(field.id)}
+            label={field.visible ? "Hide row" : "Show row"}
+          >
+            {field.visible ? (
+              <Eye className="h-3 w-3" />
+            ) : (
+              <EyeOff className="h-3 w-3" />
+            )}
+          </RowIconButton>
+          <RowIconButton
+            onClick={() => duplicateRow(field.id)}
+            disabled={fieldsLength >= MAX_FIELDS}
+            label="Duplicate row"
+          >
+            <Copy className="h-3 w-3" />
+          </RowIconButton>
+          <RowIconButton
+            onClick={() => removeRow(field.id)}
+            label="Delete row"
+            className="hover:text-term-red"
+          >
+            <Trash2 className="h-3 w-3" />
+          </RowIconButton>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 pl-[52px]">
+        <Input
+          value={field.value}
+          onChange={(e) =>
+            updateRow(field.id, { value: e.target.value })
+          }
+          placeholder={field.placeholder ?? "Value"}
+          className="h-8 flex-1 font-mono text-xs placeholder:text-muted-foreground/30"
+        />
+      </div>
+      </motion.div>
+    </div>
   );
 }
 
