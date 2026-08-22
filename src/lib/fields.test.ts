@@ -174,19 +174,24 @@ function fullFields(): InfoField[] {
 }
 
 test("addRowToFields appends a row with generated id and stops at the cap", () => {
-  const added = addRowToFields(blankFields());
+  const base = resetFieldsToDefaults();
+  const added = addRowToFields(base);
 
-  assert.equal(added.length, DEFAULT_FIELDS.length + 1);
+  assert.equal(added.length, base.length + 1);
   assert.equal(added[added.length - 1].id, "row");
   assert.equal(added[added.length - 1].visible, true);
+  assert.equal(added[added.length - 1].label, "");
+  assert.equal(added[added.length - 1].value, "");
 
-  const atCap = addRowToFields(fullFields());
+  const atCap = addRowToFields(Array.from({ length: MAX_FIELDS }, (_, i) => ({
+    id: `f-${i}`, label: "", value: "", color: "#fff", visible: true,
+  })));
   assert.equal(atCap.length, MAX_FIELDS);
 });
 
 test("addRowToFields dedupes generated ids", () => {
-  const fields = blankFields();
-  fields.push({ id: "row", label: "row", value: "", color: "#fff", visible: true });
+  const fields = resetFieldsToDefaults();
+  fields.push({ id: "row", label: "", value: "", color: "#fff", visible: true });
 
   const added = addRowToFields(fields);
 
@@ -238,16 +243,16 @@ test("toggleRowVisibility flips the visible flag", () => {
   assert.equal(shown[0].visible, true);
 });
 
-test("resetFieldsToDefaults restores default set with empty values", () => {
-  const fields = blankFields();
-  fields[0].value = "Changed";
-  fields[0].label = "Custom";
-  fields[1].visible = false;
-
+test("resetFieldsToDefaults restores 2 rows with empty label/value", () => {
   const reset = resetFieldsToDefaults();
 
-  assert.equal(reset.length, DEFAULT_FIELDS.length);
+  assert.equal(reset.length, 2);
+  assert.equal(reset[0].id, "distro");
   assert.equal(reset[0].value, "");
-  assert.equal(reset[0].label, "Distro");
+  assert.equal(reset[0].label, "");
+  assert.equal(reset[0].visible, true);
+  assert.equal(reset[1].id, "host");
+  assert.equal(reset[1].value, "");
+  assert.equal(reset[1].label, "");
   assert.equal(reset[1].visible, true);
 });

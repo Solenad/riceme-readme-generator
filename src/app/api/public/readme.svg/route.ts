@@ -186,9 +186,7 @@ function genTwCSS(): string {
 }
 
 function buildInfo(params: URLSearchParams, theme: Theme) {
-  return parseFields(params, theme.palette).filter(
-    (row) => row.visible && row.value.trim().length > 0,
-  );
+  return parseFields(params, theme.palette).filter((row) => row.visible);
 }
 
 export async function GET(request: Request) {
@@ -236,13 +234,20 @@ export async function GET(request: Request) {
   const valueFontSize = 13;
   const valueLineH = 17;
   const valueCharW = valueFontSize * 0.62;
-  const maxValueWidth = Math.max(120, sepEndX - (infoX + keyColW));
+  const numColW = 25;
+  const numGap = 0;
+  const maxValueWidth = Math.max(120, sepEndX - (infoX + numColW + numGap + keyColW));
   const maxValueChars = Math.max(12, Math.floor(maxValueWidth / valueCharW));
 
-  const renderedInfo = info.map((row) => ({
+  const renderedInfo = info.map((row, i) => ({
     ...row,
+    index: i + 1,
     valueLines: wrapText(row.value, maxValueChars),
   }));
+
+  const numX = infoX;
+  const labelX = infoX + numColW + numGap;
+  const valueX = labelX + keyColW;
 
   let nextInfoY = rowStartY;
   const infoRows = renderedInfo
@@ -251,13 +256,34 @@ export async function GET(request: Request) {
       const rowHeight = Math.max(rowH, row.valueLines.length * valueLineH);
       nextInfoY += rowHeight + rowGap;
 
+      const hasLabel = row.label.trim().length > 0;
+      const hasValue = row.value.trim().length > 0;
+      const numStr = String(row.index).padStart(2, "0");
+
+      if (!hasLabel && !hasValue) {
+        return `<g>
+    <text x="${numX}" y="${y}" font-size="10" fill="${theme.muted}" font-family="monospace">${numStr}</text>
+  </g>`;
+      }
+
+      if (!hasLabel && hasValue) {
+        return `<g>
+    <text x="${numX}" y="${y}" font-size="10" fill="${theme.muted}" font-family="monospace">${numStr}</text>
+    <text x="${labelX}" y="${y}" font-size="${labelFontSize}" font-weight="700" fill="${row.color}">${esc(row.valueLines[0])}</text>
+    ${row.valueLines.slice(1).map((line, i) =>
+      `<tspan x="${labelX}" dy="${valueLineH}">${esc(line)}</tspan>`
+    ).join("\n    ")}
+  </g>`;
+      }
+
       return `<g>
-    <text x="${infoX}" y="${y}" font-size="${labelFontSize}" font-weight="700" fill="${row.color}">${esc(row.label)}</text>
-    <text x="${infoX + keyColW}" y="${y}" font-size="${valueFontSize}" fill="${theme.fg}">
+    <text x="${numX}" y="${y}" font-size="10" fill="${theme.muted}" font-family="monospace">${numStr}</text>
+    <text x="${labelX}" y="${y}" font-size="${labelFontSize}" font-weight="700" fill="${row.color}">${esc(row.label)}</text>
+    <text x="${valueX}" y="${y}" font-size="${valueFontSize}" fill="${theme.fg}">
       ${row.valueLines
         .map(
           (line, i) =>
-            `<tspan x="${infoX + keyColW}" dy="${i === 0 ? 0 : valueLineH}">${esc(line)}</tspan>`,
+            `<tspan x="${valueX}" dy="${i === 0 ? 0 : valueLineH}">${esc(line)}</tspan>`,
         )
         .join("\n      ")}
     </text>

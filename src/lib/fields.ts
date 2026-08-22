@@ -190,10 +190,11 @@ export function serializeFields(fields: InfoField[]): URLSearchParams {
 export function addRowToFields(fields: InfoField[]): InfoField[] {
   if (fields.length >= MAX_FIELDS) return fields;
   const id = slugifyId("", new Set(fields.map((f) => f.id)));
-  const color = DEFAULT_FIELDS[fields.length % DEFAULT_FIELDS.length].color;
+  const palette = ["#8bd5ca", "#eed49f", "#a6da95", "#f5bde6", "#8aadf4", "#c6a0f6", "#f5a97f", "#91d7e3"];
+  const color = palette[fields.length % palette.length];
   return [
     ...fields,
-    { id, label: id, value: "", color, visible: true, placeholder: "Value" },
+    { id, label: "", value: "", color, visible: true, placeholder: "Value" },
   ];
 }
 
@@ -238,5 +239,8 @@ export function toggleRowVisibility(
 }
 
 export function resetFieldsToDefaults(): InfoField[] {
-  return DEFAULT_FIELDS.map((f) => ({ ...f, value: "" }));
+  return [
+    { id: "distro", label: "", value: "", color: DEFAULT_FIELDS[0].color, visible: true, placeholder: "Value" },
+    { id: "host", label: "", value: "", color: DEFAULT_FIELDS[1].color, visible: true, placeholder: "Value" },
+  ];
 }
