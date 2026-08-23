@@ -514,7 +514,7 @@ export function ReadmeBuilder() {
             </div>
           </div>
           <motion.div
-            className="max-h-[420px] space-y-2 overflow-y-auto pr-1"
+            className="max-h-[420px] space-y-2 overflow-y-auto pr-1 [mask-image:linear-gradient(to_bottom,black_calc(100%_-_24px),transparent)]"
             variants={fieldGrid}
             initial="hidden"
             animate="show"
