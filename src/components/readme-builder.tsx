@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
@@ -181,6 +181,10 @@ export function ReadmeBuilder() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [compressedAscii, setCompressedAscii] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [previewLoaded, setPreviewLoaded] = useState(true);
+  const [isPreviewUpdating, setIsPreviewUpdating] = useState(false);
+  const prevPreviewUrl = useRef<string | null>(null);
 
   useEffect(() => {
     setOrigin(window.location.origin);
@@ -242,6 +246,18 @@ export function ReadmeBuilder() {
     debouncedTheme,
     compressedAscii,
   );
+
+  useEffect(() => {
+    if (prevPreviewUrl.current === null) {
+      prevPreviewUrl.current = previewUrl;
+      return;
+    }
+    if (prevPreviewUrl.current !== previewUrl) {
+      prevPreviewUrl.current = previewUrl;
+      setIsPreviewUpdating(true);
+      setPreviewLoaded(false);
+    }
+  }, [previewUrl]);
 
   const updateRow = useCallback(
     (id: string, patch: Partial<Omit<InfoField, "id">>) => {
@@ -584,18 +600,34 @@ export function ReadmeBuilder() {
       </motion.div>
 
       <motion.div className="space-y-6" variants={slideRight}>
-        <div className="overflow-hidden rounded-lg border border-border bg-card/40 p-2">
+        <div
+          className="group relative cursor-pointer overflow-hidden rounded-lg border border-border bg-card/40 p-2"
+          onClick={() => setPreviewModalOpen(true)}
+        >
+          {isPreviewUpdating && !previewLoaded && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center animate-pulse rounded bg-muted/50">
+              <span className="text-xs text-muted-foreground">Loading preview...</span>
+            </div>
+          )}
           <img
             src={previewUrl}
             alt="README card preview"
-            className="block w-full"
+            className={`block w-full transition-opacity duration-300 group-hover:blur-[2px] ${previewLoaded ? "opacity-100" : "opacity-0"}`}
             onError={(e) => {
               (e.target as HTMLImageElement).style.opacity = "0.5";
             }}
-            onLoad={(e) => {
-              (e.target as HTMLImageElement).style.opacity = "1";
+            onLoad={() => {
+              setPreviewLoaded(true);
+              setIsPreviewUpdating(false);
             }}
           />
+          {previewLoaded && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+              <span className="text-xs font-medium text-foreground drop-shadow-md">
+                Preview
+              </span>
+            </div>
+          )}
         </div>
 
         <motion.div
@@ -630,6 +662,40 @@ export function ReadmeBuilder() {
           </motion.div>
         </motion.div>
       </motion.div>
+
+      <dialog
+        ref={(el) => {
+          if (el) {
+            if (previewModalOpen && !el.open) {
+              el.showModal();
+            } else if (!previewModalOpen && el.open) {
+              el.close();
+            }
+          }
+        }}
+        onClose={() => setPreviewModalOpen(false)}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setPreviewModalOpen(false);
+        }}
+        className="group fixed inset-0 z-50 m-auto max-w-4xl cursor-pointer rounded-lg border border-border bg-card p-0 backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+      >
+        <div className="cursor-default p-4">
+          <button
+            type="button"
+            onClick={() => setPreviewModalOpen(false)}
+            className="absolute top-3 right-3 flex h-7 w-7 cursor-pointer items-center justify-center rounded-md bg-card/80 text-muted-foreground opacity-0 transition-all duration-200 group-hover:opacity-100 hover:text-foreground hover:bg-card"
+            aria-label="Close preview"
+          >
+            ✕
+          </button>
+          <img
+            key={previewUrl}
+            src={previewUrl}
+            alt="README card preview full size"
+            className="block w-full"
+          />
+        </div>
+      </dialog>
     </motion.div>
   );
 }
