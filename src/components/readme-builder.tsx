@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -60,46 +59,6 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-
-function yearsSince(dateStr: string): string {
-  const created = new Date(dateStr);
-  const now = new Date();
-  let years = now.getFullYear() - created.getFullYear();
-  const m = now.getMonth() - created.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < created.getDate())) years--;
-  return `${Math.max(1, years)} years on GitHub`;
-}
-
-async function fetchProfile(username: string) {
-  const res = await fetch(`https://api.github.com/users/${username}`, {
-    headers: { "User-Agent": "RiceMe" },
-  });
-  if (!res.ok) {
-    if (res.status === 404) throw new Error("User not found on GitHub");
-    if (res.status === 403)
-      throw new Error("Rate limited by GitHub. Try again later.");
-    throw new Error(`GitHub API error (${res.status})`);
-  }
-  return res.json();
-}
-
-function mapProfileToFields(
-  profile: Record<string, unknown>,
-): Record<string, string> {
-  const fields: Record<string, string> = {};
-  if (typeof profile.name === "string" && profile.name)
-    fields.host = profile.name;
-  if (typeof profile.bio === "string" && profile.bio)
-    fields.kernel = profile.bio;
-  if (typeof profile.company === "string" && profile.company)
-    fields.school = profile.company;
-  if (typeof profile.location === "string" && profile.location)
-    fields.distro = profile.location;
-  if (typeof profile.created_at === "string" && profile.created_at) {
-    fields.uptime = yearsSince(profile.created_at);
-  }
-  return fields;
-}
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -170,7 +129,6 @@ const snippetItem = {
 export function ReadmeBuilder() {
   const [origin, setOrigin] = useState("");
   const [username, setUsername] = useState("");
-  const [fetchTarget, setFetchTarget] = useState<string | null>(null);
   const [fields, setFields] = useState<InfoField[]>(() =>
     resetFieldsToDefaults(),
   );
@@ -189,33 +147,6 @@ export function ReadmeBuilder() {
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
-
-  const profileQuery = useQuery({
-    queryKey: ["github-profile", fetchTarget],
-    queryFn: () => fetchProfile(fetchTarget!),
-    enabled: !!fetchTarget,
-    staleTime: 5 * 60 * 1000,
-    retry: 1,
-    meta: { errorMessage: "Failed to fetch profile" },
-  });
-
-  useEffect(() => {
-    if (profileQuery.data) {
-      const mapped = mapProfileToFields(profileQuery.data);
-      setFields((prev) =>
-        prev.map((f) =>
-          mapped[f.id] !== undefined ? { ...f, value: mapped[f.id] } : f,
-        ),
-      );
-      toast.success(`Fetched profile for ${fetchTarget}`, { duration: 2000 });
-    }
-  }, [profileQuery.data, fetchTarget]);
-
-  useEffect(() => {
-    if (profileQuery.error) {
-      toast.error(profileQuery.error.message, { duration: 4000 });
-    }
-  }, [profileQuery.error]);
 
   const debouncedFields = useDebounce(fields, 500);
   const debouncedUsername = useDebounce(username, 500);
@@ -292,15 +223,6 @@ export function ReadmeBuilder() {
     setFields(resetFieldsToDefaults());
   }, []);
 
-  const handleFetch = useCallback(() => {
-    const trimmed = username.trim();
-    if (!trimmed) {
-      toast.error("Enter a GitHub username first");
-      return;
-    }
-    setFetchTarget(trimmed);
-  }, [username]);
-
   const copy = useCallback((text: string, key: string) => {
     navigator.clipboard.writeText(text).then(
       () => {
@@ -352,13 +274,6 @@ export function ReadmeBuilder() {
   const markdown = `![${username}](${fullUrl})`;
   const html = `<p align="center">\n  <img src="${fullUrl}" alt="${username}" />\n</p>`;
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter") handleFetch();
-    },
-    [handleFetch],
-  );
-
   return (
     <motion.div
       className="grid grid-cols-1 gap-8 lg:grid-cols-2"
@@ -368,38 +283,20 @@ export function ReadmeBuilder() {
     >
       <motion.div className="space-y-6" variants={slideLeft}>
         <div>
-          <div className="mb-4 flex items-end gap-3">
-            <div className="flex-1">
-              <Label
-                htmlFor="gh-username"
-                className="mb-1.5 block text-xs text-muted-foreground"
-              >
-                GitHub Username
-              </Label>
-              <Input
-                id="gh-username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="e.g. Solenad"
-                className="font-mono placeholder:text-muted-foreground/30"
-              />
-            </div>
-            <Button
-              onClick={handleFetch}
-              disabled={profileQuery.isFetching}
-              variant="default"
-              className="shrink-0"
+          <div className="mb-4">
+            <Label
+              htmlFor="gh-username"
+              className="mb-1.5 block text-xs text-muted-foreground"
             >
-              {profileQuery.isFetching ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Fetching...
-                </span>
-              ) : (
-                "Fetch Profile"
-              )}
-            </Button>
+              GitHub Username
+            </Label>
+            <Input
+              id="gh-username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="e.g. Solenad"
+              className="font-mono placeholder:text-muted-foreground/30"
+            />
           </div>
           <div className="flex items-center gap-3">
             <Switch
