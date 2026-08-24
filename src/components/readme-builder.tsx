@@ -1,7 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -60,46 +59,6 @@ import {
   RotateCcw,
   Trash2,
 } from "lucide-react";
-
-function yearsSince(dateStr: string): string {
-  const created = new Date(dateStr);
-  const now = new Date();
-  let years = now.getFullYear() - created.getFullYear();
-  const m = now.getMonth() - created.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < created.getDate())) years--;
-  return `${Math.max(1, years)} years on GitHub`;
-}
-
-async function fetchProfile(username: string) {
-  const res = await fetch(`https://api.github.com/users/${username}`, {
-    headers: { "User-Agent": "RiceMe" },
-  });
-  if (!res.ok) {
-    if (res.status === 404) throw new Error("User not found on GitHub");
-    if (res.status === 403)
-      throw new Error("Rate limited by GitHub. Try again later.");
-    throw new Error(`GitHub API error (${res.status})`);
-  }
-  return res.json();
-}
-
-function mapProfileToFields(
-  profile: Record<string, unknown>,
-): Record<string, string> {
-  const fields: Record<string, string> = {};
-  if (typeof profile.name === "string" && profile.name)
-    fields.host = profile.name;
-  if (typeof profile.bio === "string" && profile.bio)
-    fields.kernel = profile.bio;
-  if (typeof profile.company === "string" && profile.company)
-    fields.school = profile.company;
-  if (typeof profile.location === "string" && profile.location)
-    fields.distro = profile.location;
-  if (typeof profile.created_at === "string" && profile.created_at) {
-    fields.uptime = yearsSince(profile.created_at);
-  }
-  return fields;
-}
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -170,7 +129,6 @@ const snippetItem = {
 export function ReadmeBuilder() {
   const [origin, setOrigin] = useState("");
   const [username, setUsername] = useState("");
-  const [fetchTarget, setFetchTarget] = useState<string | null>(null);
   const [fields, setFields] = useState<InfoField[]>(() =>
     resetFieldsToDefaults(),
   );
@@ -181,37 +139,14 @@ export function ReadmeBuilder() {
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [compressedAscii, setCompressedAscii] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [previewLoaded, setPreviewLoaded] = useState(true);
+  const [isPreviewUpdating, setIsPreviewUpdating] = useState(false);
+  const prevPreviewUrl = useRef<string | null>(null);
 
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
-
-  const profileQuery = useQuery({
-    queryKey: ["github-profile", fetchTarget],
-    queryFn: () => fetchProfile(fetchTarget!),
-    enabled: !!fetchTarget,
-    staleTime: 5 * 60 * 1000,
-    retry: 1,
-    meta: { errorMessage: "Failed to fetch profile" },
-  });
-
-  useEffect(() => {
-    if (profileQuery.data) {
-      const mapped = mapProfileToFields(profileQuery.data);
-      setFields((prev) =>
-        prev.map((f) =>
-          mapped[f.id] !== undefined ? { ...f, value: mapped[f.id] } : f,
-        ),
-      );
-      toast.success(`Fetched profile for ${fetchTarget}`, { duration: 2000 });
-    }
-  }, [profileQuery.data, fetchTarget]);
-
-  useEffect(() => {
-    if (profileQuery.error) {
-      toast.error(profileQuery.error.message, { duration: 4000 });
-    }
-  }, [profileQuery.error]);
 
   const debouncedFields = useDebounce(fields, 500);
   const debouncedUsername = useDebounce(username, 500);
@@ -242,6 +177,18 @@ export function ReadmeBuilder() {
     debouncedTheme,
     compressedAscii,
   );
+
+  useEffect(() => {
+    if (prevPreviewUrl.current === null) {
+      prevPreviewUrl.current = previewUrl;
+      return;
+    }
+    if (prevPreviewUrl.current !== previewUrl) {
+      prevPreviewUrl.current = previewUrl;
+      setIsPreviewUpdating(true);
+      setPreviewLoaded(false);
+    }
+  }, [previewUrl]);
 
   const updateRow = useCallback(
     (id: string, patch: Partial<Omit<InfoField, "id">>) => {
@@ -275,15 +222,6 @@ export function ReadmeBuilder() {
   const resetFields = useCallback(() => {
     setFields(resetFieldsToDefaults());
   }, []);
-
-  const handleFetch = useCallback(() => {
-    const trimmed = username.trim();
-    if (!trimmed) {
-      toast.error("Enter a GitHub username first");
-      return;
-    }
-    setFetchTarget(trimmed);
-  }, [username]);
 
   const copy = useCallback((text: string, key: string) => {
     navigator.clipboard.writeText(text).then(
@@ -336,13 +274,6 @@ export function ReadmeBuilder() {
   const markdown = `![${username}](${fullUrl})`;
   const html = `<p align="center">\n  <img src="${fullUrl}" alt="${username}" />\n</p>`;
 
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === "Enter") handleFetch();
-    },
-    [handleFetch],
-  );
-
   return (
     <motion.div
       className="grid grid-cols-1 gap-8 lg:grid-cols-2"
@@ -352,38 +283,20 @@ export function ReadmeBuilder() {
     >
       <motion.div className="space-y-6" variants={slideLeft}>
         <div>
-          <div className="mb-4 flex items-end gap-3">
-            <div className="flex-1">
-              <Label
-                htmlFor="gh-username"
-                className="mb-1.5 block text-xs text-muted-foreground"
-              >
-                GitHub Username
-              </Label>
-              <Input
-                id="gh-username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="e.g. Solenad"
-                className="font-mono placeholder:text-muted-foreground/30"
-              />
-            </div>
-            <Button
-              onClick={handleFetch}
-              disabled={profileQuery.isFetching}
-              variant="default"
-              className="shrink-0"
+          <div className="mb-4">
+            <Label
+              htmlFor="gh-username"
+              className="mb-1.5 block text-xs text-muted-foreground"
             >
-              {profileQuery.isFetching ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Fetching...
-                </span>
-              ) : (
-                "Fetch Profile"
-              )}
-            </Button>
+              GitHub Username
+            </Label>
+            <Input
+              id="gh-username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="e.g. Solenad"
+              className="font-mono placeholder:text-muted-foreground/30"
+            />
           </div>
           <div className="flex items-center gap-3">
             <Switch
@@ -584,18 +497,34 @@ export function ReadmeBuilder() {
       </motion.div>
 
       <motion.div className="space-y-6" variants={slideRight}>
-        <div className="overflow-hidden rounded-lg border border-border bg-card/40 p-2">
+        <div
+          className="group relative cursor-pointer overflow-hidden rounded-lg border border-border bg-card/40 p-2"
+          onClick={() => setPreviewModalOpen(true)}
+        >
+          {isPreviewUpdating && !previewLoaded && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center animate-pulse rounded bg-muted/50">
+              <span className="text-xs text-muted-foreground">Loading preview...</span>
+            </div>
+          )}
           <img
             src={previewUrl}
             alt="README card preview"
-            className="block w-full"
+            className={`block w-full transition-opacity duration-300 group-hover:blur-[2px] ${previewLoaded ? "opacity-100" : "opacity-0"}`}
             onError={(e) => {
               (e.target as HTMLImageElement).style.opacity = "0.5";
             }}
-            onLoad={(e) => {
-              (e.target as HTMLImageElement).style.opacity = "1";
+            onLoad={() => {
+              setPreviewLoaded(true);
+              setIsPreviewUpdating(false);
             }}
           />
+          {previewLoaded && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+              <span className="text-xs font-medium text-foreground drop-shadow-md">
+                Preview
+              </span>
+            </div>
+          )}
         </div>
 
         <motion.div
@@ -630,6 +559,40 @@ export function ReadmeBuilder() {
           </motion.div>
         </motion.div>
       </motion.div>
+
+      <dialog
+        ref={(el) => {
+          if (el) {
+            if (previewModalOpen && !el.open) {
+              el.showModal();
+            } else if (!previewModalOpen && el.open) {
+              el.close();
+            }
+          }
+        }}
+        onClose={() => setPreviewModalOpen(false)}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) setPreviewModalOpen(false);
+        }}
+        className="group fixed inset-0 z-50 m-auto max-w-4xl cursor-pointer rounded-lg border border-border bg-card p-0 backdrop:bg-black/60 backdrop:backdrop-blur-sm"
+      >
+        <div className="cursor-default p-4">
+          <button
+            type="button"
+            onClick={() => setPreviewModalOpen(false)}
+            className="absolute top-3 right-3 flex h-7 w-7 cursor-pointer items-center justify-center rounded-md bg-card/80 text-muted-foreground opacity-0 transition-all duration-200 group-hover:opacity-100 hover:text-foreground hover:bg-card"
+            aria-label="Close preview"
+          >
+            ✕
+          </button>
+          <img
+            key={previewUrl}
+            src={previewUrl}
+            alt="README card preview full size"
+            className="block w-full"
+          />
+        </div>
+      </dialog>
     </motion.div>
   );
 }

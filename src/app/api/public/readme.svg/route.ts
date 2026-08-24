@@ -239,11 +239,17 @@ export async function GET(request: Request) {
   const maxValueWidth = Math.max(120, sepEndX - (infoX + numColW + numGap + keyColW));
   const maxValueChars = Math.max(12, Math.floor(maxValueWidth / valueCharW));
 
-  const renderedInfo = info.map((row, i) => ({
-    ...row,
-    index: i + 1,
-    valueLines: wrapText(row.value, maxValueChars),
-  }));
+  const renderedInfo = info
+    .filter((row) => row.label.trim().length > 0 || row.value.trim().length > 0)
+    .map((row, i) => ({
+      ...row,
+      index: i + 1,
+      valueLines: wrapText(row.value, maxValueChars),
+    }));
+
+  const numX = infoX;
+  const labelX = infoX + numColW + numGap;
+  const valueX = labelX + keyColW;
 
   const numX = infoX;
   const labelX = infoX + numColW + numGap;
@@ -257,16 +263,9 @@ export async function GET(request: Request) {
       nextInfoY += rowHeight + rowGap;
 
       const hasLabel = row.label.trim().length > 0;
-      const hasValue = row.value.trim().length > 0;
       const numStr = String(row.index).padStart(2, "0");
 
-      if (!hasLabel && !hasValue) {
-        return `<g>
-    <text x="${numX}" y="${y}" font-size="10" fill="${theme.muted}" font-family="monospace">${numStr}</text>
-  </g>`;
-      }
-
-      if (!hasLabel && hasValue) {
+      if (!hasLabel) {
         return `<g>
     <text x="${numX}" y="${y}" font-size="10" fill="${theme.muted}" font-family="monospace">${numStr}</text>
     <text x="${labelX}" y="${y}" font-size="${labelFontSize}" font-weight="700" fill="${row.color}">${esc(row.valueLines[0])}</text>
@@ -445,8 +444,6 @@ export async function GET(request: Request) {
   <g class="tw-cempty">
     <text x="65" y="${H - 30}" font-size="13" font-family="monospace" fill="${theme.fg}"><animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.49;0.5;1" dur="1s" repeatCount="indefinite" />▍</text>
   </g>
-  <text x="30" y="${H - 12}" font-size="12" fill="${theme.muted}">
-  </text>
   ${crtOverlay}
 </svg>`;
 
