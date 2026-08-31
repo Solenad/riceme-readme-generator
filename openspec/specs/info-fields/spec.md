@@ -160,16 +160,12 @@ The system SHALL display a two-digit zero-padded index (01, 02, ...) for each ro
 - **WHEN** a row is deleted
 - **THEN** remaining rows re-index sequentially from 01
 
-#### Scenario: Empty row numbering
-- **WHEN** a row has empty label and empty value
-- **THEN** the index still renders in the SVG (number only, no text)
-
 ### Requirement: SVG renders empty rows with number only
-The system SHALL render rows with empty label and empty value by showing only the index number in the SVG, without any label or value text.
+The system SHALL completely skip rendering rows that have both empty label and empty value. Such rows SHALL NOT render any index number, SHALL NOT allocate vertical space, and SHALL NOT affect the layout of subsequent rows or sections.
 
-#### Scenario: Empty row in SVG
+#### Scenario: Empty row is completely hidden in SVG
 - **WHEN** a row has empty label and empty value and is visible
-- **THEN** the SVG renders the index number only (no label or value text)
+- **THEN** the SVG renders nothing for that row — no index number, no label, no value — and the row occupies zero vertical space
 
 #### Scenario: Empty label with value
 - **WHEN** a row has empty label but non-empty value
