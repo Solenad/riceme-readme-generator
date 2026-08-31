@@ -136,9 +136,12 @@ function resolveRow(
   params: URLSearchParams,
   palette: readonly string[],
   index: number,
+  hasExplicitFields: boolean,
 ): InfoField {
   const def = DEFAULT_FIELDS.find((f) => f.id === id);
-  const value = params.get(id) ?? def?.value ?? "";
+  const rawValue = params.get(id);
+  const value =
+    rawValue !== null ? rawValue : hasExplicitFields ? "" : (def?.value ?? "");
   const label = params.get(`${id}_label`) ?? def?.label ?? id;
   const color =
     params.get(`${id}_color`) ?? def?.color ?? palette[index % palette.length];
@@ -167,12 +170,13 @@ export function parseFields(
     }));
   }
 
+  const hasExplicitFields = true;
   return idsParam
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean)
     .slice(0, MAX_FIELDS)
-    .map((id, i) => resolveRow(id, params, palette, i));
+    .map((id, i) => resolveRow(id, params, palette, i, hasExplicitFields));
 }
 
 export function serializeFields(fields: InfoField[]): URLSearchParams {

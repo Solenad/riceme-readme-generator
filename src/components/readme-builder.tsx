@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
@@ -40,7 +41,6 @@ import {
 } from "@/components/ui/select";
 import { THEMES, DEFAULT_THEME } from "@/lib/themes";
 import {
-  DEFAULT_FIELDS,
   MAX_FIELDS,
   addRowToFields,
   duplicateRowInFields,
@@ -52,6 +52,14 @@ import {
   type InfoField,
 } from "@/lib/fields";
 import {
+  readBuilderState,
+  writeToBuildUrl,
+  isValidUsername,
+  findDuplicateLabels,
+  type BuilderState,
+} from "@/lib/builder-state";
+import { BuilderShare } from "@/components/builder-share";
+import {
   Copy,
   Eye,
   EyeOff,
@@ -59,6 +67,12 @@ import {
   Plus,
   RotateCcw,
   Trash2,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  AlertCircle,
 } from "lucide-react";
 
 function yearsSince(dateStr: string): string {
@@ -168,6 +182,8 @@ const snippetItem = {
 };
 
 export function ReadmeBuilder() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [origin, setOrigin] = useState("");
   const [username, setUsername] = useState("");
   const [fetchTarget, setFetchTarget] = useState<string | null>(null);
@@ -178,13 +194,81 @@ export function ReadmeBuilder() {
   const [showCrt, setShowCrt] = useState(true);
   const [customAscii, setCustomAscii] = useState("");
   const [selectedTheme, setSelectedTheme] = useState(DEFAULT_THEME);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [compressedAscii, setCompressedAscii] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [hasHydrated, setHasHydrated] = useState(false);
+  const [previewCollapsed, setPreviewCollapsed] = useState(false);
+  const hasHydratedRef = useRef(false);
 
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
+
+  // 2.2 Hydrate from URL on mount
+  useEffect(() => {
+    if (hasHydratedRef.current) return;
+    const params = new URLSearchParams(searchParams.toString());
+    const state = readBuilderState(params);
+    // Only hydrate if there is any meaningful state or f param? 
+    // readBuilderState handles empty -> resetFieldsToDefaults (fresh)
+    // For empty params, we keep initial defaults (2 empty) - no need to set
+    // But we still need to hydrate username/theme/toggles if present
+    if (state.username) setUsername(state.username);
+    if (state.theme) setSelectedTheme(state.theme);
+    setShowAscii(state.ascii);
+    setShowCrt(state.crt);
+    if (state.customAscii) setCustomAscii(state.customAscii);
+    // Hydrate fields: if params has any keys, use parsed fields; else keep defaults
+    const hasAnyParam = Array.from(params.keys()).length > 0;
+    if (hasAnyParam) {
+      setFields(state.fields);
+    }
+    hasHydratedRef.current = true;
+    setHasHydrated(true);
+  }, [searchParams]);
+
+  // 2.3 + 2.4 URL sync debounced 300ms
+  useEffect(() => {
+    if (!hasHydrated) return;
+    const timer = setTimeout(() => {
+      const state: BuilderState = {
+        username,
+        theme: selectedTheme,
+        ascii: showAscii,
+        crt: showCrt,
+        customAscii,
+        fields,
+      };
+      const url = writeToBuildUrl(state);
+      const current = `${window.location.pathname}${window.location.search}`;
+      // Avoid pushing identical URL
+      if (url !== current) {
+        router.replace(url, { scroll: false });
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [username, selectedTheme, showAscii, showCrt, customAscii, fields, hasHydrated, router]);
+
+  // 4.2 usernameError computed
+  const usernameError = useMemo(() => {
+    if (!username) return null;
+    if (!isValidUsername(username.trim())) {
+      return "Must be 1-39 chars, alphanumeric and hyphens";
+    }
+    return null;
+  }, [username]);
+
+  // 5.1 duplicate labels
+  const duplicateLabels = useMemo(() => findDuplicateLabels(fields), [fields]);
+
+  // 5.4 field count color
+  const fieldCountColor = useMemo(() => {
+    if (fields.length >= 16) return "text-red-500";
+    if (fields.length >= 14) return "text-yellow-500";
+    return "text-muted-foreground";
+  }, [fields.length]);
+
+  // 4.6 clear fetch status when username changes is handled via conditional rendering (username !== fetchTarget)
 
   const profileQuery = useQuery({
     queryKey: ["github-profile", fetchTarget],
@@ -282,18 +366,12 @@ export function ReadmeBuilder() {
       toast.error("Enter a GitHub username first");
       return;
     }
+    if (usernameError) {
+      toast.error(usernameError);
+      return;
+    }
     setFetchTarget(trimmed);
-  }, [username]);
-
-  const copy = useCallback((text: string, key: string) => {
-    navigator.clipboard.writeText(text).then(
-      () => {
-        setCopiedKey(key);
-        setTimeout(() => setCopiedKey(null), 1500);
-      },
-      () => toast.error("Failed to copy"),
-    );
-  }, []);
+  }, [username, usernameError]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -323,25 +401,48 @@ export function ReadmeBuilder() {
     [],
   );
 
-  const fullUrl = buildPreviewUrl(
-    origin,
-    username,
-    fields,
-    showAscii,
-    customAscii,
-    showCrt,
-    selectedTheme,
-    compressedAscii,
-  );
-  const markdown = `![${username}](${fullUrl})`;
-  const html = `<p align="center">\n  <img src="${fullUrl}" alt="${username}" />\n</p>`;
-
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (e.key === "Enter") handleFetch();
     },
     [handleFetch],
   );
+
+  const builderState: BuilderState = useMemo(() => ({
+    username,
+    theme: selectedTheme,
+    ascii: showAscii,
+    crt: showCrt,
+    customAscii,
+    fields,
+  }), [username, selectedTheme, showAscii, showCrt, customAscii, fields]);
+
+  // Determine fetch status for inline display (4.5)
+  const fetchStatus = useMemo(() => {
+    if (!fetchTarget) return null;
+    if (username.trim() !== fetchTarget) return null; // cleared when username changes (4.6)
+    if (profileQuery.isFetching) return null; // handled via button spinner
+    if (profileQuery.data) {
+      const data = profileQuery.data as Record<string, unknown>;
+      const repos = typeof data.public_repos === "number" ? data.public_repos : 0;
+      const followers = typeof data.followers === "number" ? data.followers : 0;
+      return {
+        type: "success" as const,
+        message: `Profile found · ${repos} repos · ${followers} followers`,
+      };
+    }
+    if (profileQuery.error) {
+      const msg = (profileQuery.error as Error).message;
+      if (msg.includes("Rate limited")) {
+        return { type: "warning" as const, message: msg };
+      }
+      if (msg.includes("not found") || msg.includes("User not found")) {
+        return { type: "error" as const, message: "User not found on GitHub" };
+      }
+      return { type: "error" as const, message: "Failed to fetch profile" };
+    }
+    return null;
+  }, [fetchTarget, username, profileQuery.data, profileQuery.error, profileQuery.isFetching]);
 
   return (
     <motion.div
@@ -350,7 +451,8 @@ export function ReadmeBuilder() {
       initial="hidden"
       animate="show"
     >
-      <motion.div className="space-y-6" variants={slideLeft}>
+      {/* Form column - order 2 on mobile (below sticky preview), order 1 on desktop */}
+      <motion.div className="space-y-6 lg:order-1 order-2" variants={slideLeft}>
         <div>
           <div className="mb-4 flex items-end gap-3">
             <div className="flex-1">
@@ -366,12 +468,25 @@ export function ReadmeBuilder() {
                 onChange={(e) => setUsername(e.target.value)}
                 onKeyDown={handleKeyDown}
                 placeholder="e.g. Solenad"
-                className="font-mono placeholder:text-muted-foreground/30"
+                className={`font-mono placeholder:text-muted-foreground/30 ${usernameError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
               />
+              {usernameError && (
+                <p className="mt-1.5 rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-xs text-red-500">
+                  {usernameError}
+                </p>
+              )}
+              {fetchStatus && (
+                <div className={`mt-1.5 flex items-center gap-1.5 text-xs ${fetchStatus.type === "success" ? "text-green-600" : fetchStatus.type === "warning" ? "text-yellow-600" : "text-red-500"}`}>
+                  {fetchStatus.type === "success" && <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />}
+                  {fetchStatus.type === "error" && <XCircle className="h-3.5 w-3.5 shrink-0" />}
+                  {fetchStatus.type === "warning" && <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
+                  <span>{fetchStatus.message}</span>
+                </div>
+              )}
             </div>
             <Button
               onClick={handleFetch}
-              disabled={profileQuery.isFetching}
+              disabled={!!usernameError || !username.trim() || profileQuery.isFetching}
               variant="default"
               className="shrink-0"
             >
@@ -487,7 +602,7 @@ export function ReadmeBuilder() {
           <div className="flex items-center justify-between">
             <Label className="text-xs text-muted-foreground">
               Info rows{" "}
-              <span className="font-mono">
+              <span className={`font-mono ${fieldCountColor}`}>
                 ({fields.length}/{MAX_FIELDS})
               </span>
             </Label>
@@ -541,6 +656,7 @@ export function ReadmeBuilder() {
                       toggleVisible={toggleVisible}
                       removeRow={removeRow}
                       fieldsLength={fields.length}
+                      duplicateMap={duplicateLabels}
                     />
                   ))}
                 </AnimatePresence>
@@ -581,10 +697,29 @@ export function ReadmeBuilder() {
             </DndContext>
           </motion.div>
         </motion.div>
+
+        {/* Share buttons for mobile - below fields (6.6) */}
+        <motion.div
+          className="lg:hidden"
+          variants={snippetContainer}
+          initial="hidden"
+          animate="show"
+        >
+          <BuilderShare state={builderState} />
+        </motion.div>
       </motion.div>
 
-      <motion.div className="space-y-6" variants={slideRight}>
-        <div className="overflow-hidden rounded-lg border border-border bg-card/40 p-2">
+      {/* Preview + Share (desktop) - sticky on mobile (6.2), collapsible (6.1, 6.3, 6.4) */}
+      <motion.div className="space-y-6 lg:order-2 order-1 lg:static sticky top-0 z-10" variants={slideRight}>
+        <div className={`relative overflow-hidden rounded-lg border border-border bg-card/40 p-2 transition-all duration-300 ${previewCollapsed ? "max-h-[60px] lg:max-h-none" : "max-h-[40vh] lg:max-h-none lg:overflow-visible"} lg:max-h-none`}>
+          <button
+            type="button"
+            onClick={() => setPreviewCollapsed(!previewCollapsed)}
+            aria-label={previewCollapsed ? "Expand preview" : "Collapse preview"}
+            className="absolute right-2 top-2 z-20 flex h-7 w-7 items-center justify-center rounded bg-card/80 backdrop-blur border border-border text-muted-foreground hover:text-foreground hover:bg-card transition-colors lg:hidden"
+          >
+            {previewCollapsed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
           <img
             src={previewUrl}
             alt="README card preview"
@@ -598,69 +733,19 @@ export function ReadmeBuilder() {
           />
         </div>
 
+        {/* Share buttons for desktop - hidden on mobile */}
         <motion.div
-          className="space-y-3"
+          className="hidden lg:block space-y-3"
           variants={snippetContainer}
           initial="hidden"
           animate="show"
         >
-          <motion.div variants={snippetItem}>
-            <Snippet
-              label="Markdown"
-              value={markdown}
-              copied={copiedKey === "md"}
-              onCopy={() => copy(markdown, "md")}
-            />
-          </motion.div>
-          <motion.div variants={snippetItem}>
-            <Snippet
-              label="HTML (centered, for GitHub profile README)"
-              value={html}
-              copied={copiedKey === "html"}
-              onCopy={() => copy(html, "html")}
-            />
-          </motion.div>
-          <motion.div variants={snippetItem}>
-            <Snippet
-              label="Direct image URL"
-              value={fullUrl}
-              copied={copiedKey === "url"}
-              onCopy={() => copy(fullUrl, "url")}
-            />
-          </motion.div>
+          <BuilderShare state={builderState} />
         </motion.div>
       </motion.div>
-    </motion.div>
-  );
-}
 
-function Snippet({
-  label,
-  value,
-  copied,
-  onCopy,
-}: {
-  label: string;
-  value: string;
-  copied: boolean;
-  onCopy: () => void;
-}) {
-  return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">{label}</span>
-        <button
-          type="button"
-          onClick={onCopy}
-          className="cursor-pointer rounded border border-border bg-card px-2 py-1 font-bold text-term-green hover:border-term-green/60 hover:bg-card/80 transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]"
-        >
-          {copied ? "copied ✓" : "copy"}
-        </button>
-      </div>
-      <pre className="overflow-x-auto rounded-md border border-border bg-card/60 p-3 text-xs text-foreground/90">
-        <code>{value}</code>
-      </pre>
-    </div>
+      {/* Fallback share for desktop hidden duplicate handling - already above */}
+    </motion.div>
   );
 }
 
@@ -699,6 +784,7 @@ function SortableRow({
   toggleVisible,
   removeRow,
   fieldsLength,
+  duplicateMap,
 }: {
   field: InfoField;
   index: number;
@@ -707,6 +793,7 @@ function SortableRow({
   toggleVisible: (id: string) => void;
   removeRow: (id: string) => void;
   fieldsLength: number;
+  duplicateMap: Map<string, number>;
 }) {
   const {
     attributes,
@@ -723,6 +810,14 @@ function SortableRow({
     transition,
     opacity: isDragging ? 0 : 1,
   };
+
+  const trimmedLabel = field.label.trim().toLowerCase();
+  const dupCount = trimmedLabel ? duplicateMap.get(trimmedLabel) : undefined;
+  const isDuplicate = dupCount !== undefined && dupCount > 1;
+
+  const valueLen = field.value.length;
+  const showCharCount = valueLen >= 48;
+  const charCountColor = valueLen >= 64 ? "text-yellow-500" : "text-muted-foreground";
 
   return (
     <div ref={setNodeRef} style={style}>
@@ -767,6 +862,12 @@ function SortableRow({
           aria-label={`Label for ${field.id}`}
           className="h-7 flex-1 font-mono text-xs placeholder:text-muted-foreground/30"
         />
+        {isDuplicate && (
+          <span className="flex shrink-0 items-center gap-1 text-xs text-yellow-600">
+            <AlertCircle className="h-3 w-3" />
+            appears {dupCount} times
+          </span>
+        )}
         <div className="flex shrink-0 items-center gap-0.5">
           <RowIconButton
             onClick={() => toggleVisible(field.id)}
@@ -803,6 +904,11 @@ function SortableRow({
           placeholder={field.placeholder ?? "Value"}
           className="h-8 flex-1 font-mono text-xs placeholder:text-muted-foreground/30"
         />
+        {showCharCount && (
+          <span className={`shrink-0 font-mono text-xs ${charCountColor}`}>
+            {valueLen}/64
+          </span>
+        )}
       </div>
       </motion.div>
     </div>
