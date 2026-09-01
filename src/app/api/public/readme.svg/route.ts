@@ -445,8 +445,6 @@ export async function GET(request: Request) {
   <g class="tw-cempty">
     <text x="65" y="${H - 30}" font-size="13" font-family="monospace" fill="${theme.fg}"><animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.49;0.5;1" dur="1s" repeatCount="indefinite" />▍</text>
   </g>
-  <text x="30" y="${H - 12}" font-size="12" fill="${theme.muted}">
-  </text>
   ${crtOverlay}
 </svg>`;
 

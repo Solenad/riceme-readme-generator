@@ -39,6 +39,7 @@ const rightContainer = {
 
 export default function Page() {
   const [host, setHost] = useState("");
+  const [exampleLoaded, setExampleLoaded] = useState(false);
 
   useEffect(() => {
     setHost(window.location.origin);
@@ -160,11 +161,18 @@ export default function Page() {
             className="mb-6 overflow-hidden rounded-xl border-2 border-border bg-card/60 p-4"
             variants={slideInRight}
           >
-            <img
-              src="/api/public/readme.svg"
-              alt="solenad readme card preview"
-              className="block w-full"
-            />
+            <div className="relative">
+              {!exampleLoaded && (
+                <div className="absolute inset-0 animate-pulse rounded-md bg-muted" />
+              )}
+              <img
+                src="/api/public/readme.svg"
+                alt="solenad readme card preview"
+                className="block w-full transition-opacity duration-300"
+                onLoad={() => setExampleLoaded(true)}
+                style={{ opacity: exampleLoaded ? 1 : 0 }}
+              />
+            </div>
           </motion.div>
 
           <motion.div variants={slideInRight}>

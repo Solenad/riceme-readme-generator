@@ -490,15 +490,15 @@ export function ReadmeBuilder() {
               variant="default"
               className="shrink-0"
             >
-              {profileQuery.isFetching ? (
-                <span className="inline-flex items-center gap-1.5">
-                  <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                  Fetching...
-                </span>
-              ) : (
-                "Fetch Profile"
-              )}
-            </Button>
+              GitHub Username
+            </Label>
+            <Input
+              id="gh-username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder="e.g. Solenad"
+              className="font-mono placeholder:text-muted-foreground/30"
+            />
           </div>
           <div className="flex items-center gap-3">
             <Switch
@@ -723,14 +723,22 @@ export function ReadmeBuilder() {
           <img
             src={previewUrl}
             alt="README card preview"
-            className="block w-full"
+            className={`block w-full transition-opacity duration-300 group-hover:blur-[2px] ${previewLoaded ? "opacity-100" : "opacity-0"}`}
             onError={(e) => {
               (e.target as HTMLImageElement).style.opacity = "0.5";
             }}
-            onLoad={(e) => {
-              (e.target as HTMLImageElement).style.opacity = "1";
+            onLoad={() => {
+              setPreviewLoaded(true);
+              setIsPreviewUpdating(false);
             }}
           />
+          {previewLoaded && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+              <span className="text-xs font-medium text-foreground drop-shadow-md">
+                Preview
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Share buttons for desktop - hidden on mobile */}
@@ -909,6 +917,151 @@ function SortableRow({
             {valueLen}/64
           </span>
         )}
+      </div>
+      </motion.div>
+    </div>
+  );
+}
+
+function RowIconButton({
+  onClick,
+  disabled,
+  label,
+  children,
+  className,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  label: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      title={label}
+      aria-label={label}
+      className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded border border-border/60 bg-card/50 text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40 ${className ?? ""}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function SortableRow({
+  field,
+  index,
+  updateRow,
+  duplicateRow,
+  toggleVisible,
+  removeRow,
+  fieldsLength,
+}: {
+  field: InfoField;
+  index: number;
+  updateRow: (id: string, patch: Partial<Omit<InfoField, "id">>) => void;
+  duplicateRow: (id: string) => void;
+  toggleVisible: (id: string) => void;
+  removeRow: (id: string) => void;
+  fieldsLength: number;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: field.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style}>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0, transition: { duration: 0.15 } }}
+        transition={{ duration: 0.2 }}
+        className="rounded-md border border-border/60 bg-card/40 p-2"
+      >
+      <div className="mb-1.5 flex items-center gap-1.5">
+        <span className="w-6 shrink-0 text-right font-mono text-xs text-muted-foreground/50">
+          {String(index + 1).padStart(2, "0")}
+        </span>
+        <button
+          ref={setActivatorNodeRef}
+          type="button"
+          aria-label="Drag to reorder"
+          className="flex h-5 w-5 shrink-0 cursor-grab touch-none items-center justify-center text-muted-foreground/30 hover:text-muted-foreground active:cursor-grabbing"
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-3 w-3" />
+        </button>
+        <input
+          type="color"
+          value={field.color}
+          onChange={(e) =>
+            updateRow(field.id, { color: e.target.value })
+          }
+          title="Label color"
+          aria-label={`Color for ${field.id}`}
+          className="h-5 w-6 shrink-0 cursor-pointer rounded border-none bg-transparent p-0"
+        />
+        <Input
+          value={field.label}
+          maxLength={32}
+          onChange={(e) =>
+            updateRow(field.id, { label: e.target.value })
+          }
+          placeholder="Label"
+          aria-label={`Label for ${field.id}`}
+          className="h-7 flex-1 font-mono text-xs placeholder:text-muted-foreground/30"
+        />
+        <div className="flex shrink-0 items-center gap-0.5">
+          <RowIconButton
+            onClick={() => toggleVisible(field.id)}
+            label={field.visible ? "Hide row" : "Show row"}
+          >
+            {field.visible ? (
+              <Eye className="h-3 w-3" />
+            ) : (
+              <EyeOff className="h-3 w-3" />
+            )}
+          </RowIconButton>
+          <RowIconButton
+            onClick={() => duplicateRow(field.id)}
+            disabled={fieldsLength >= MAX_FIELDS}
+            label="Duplicate row"
+          >
+            <Copy className="h-3 w-3" />
+          </RowIconButton>
+          <RowIconButton
+            onClick={() => removeRow(field.id)}
+            label="Delete row"
+            className="hover:text-term-red"
+          >
+            <Trash2 className="h-3 w-3" />
+          </RowIconButton>
+        </div>
+      </div>
+      <div className="flex items-center gap-1.5 pl-[52px]">
+        <Input
+          value={field.value}
+          onChange={(e) =>
+            updateRow(field.id, { value: e.target.value })
+          }
+          placeholder={field.placeholder ?? "Value"}
+          className="h-8 flex-1 font-mono text-xs placeholder:text-muted-foreground/30"
+        />
       </div>
       </motion.div>
     </div>
