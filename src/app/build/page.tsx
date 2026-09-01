@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Suspense } from "react";
 import { motion } from "motion/react";
 import { ReadmeBuilder } from "@/components/readme-builder";
 
@@ -48,7 +49,9 @@ export default function BuildPage() {
             Enter your GitHub username to auto-populate, or fill in the fields
             manually. Toggle ASCII art, then paste the snippet into your README.
           </p>
-          <ReadmeBuilder />
+          <Suspense>
+            <ReadmeBuilder />
+          </Suspense>
         </motion.section>
       </motion.div>
     </main>

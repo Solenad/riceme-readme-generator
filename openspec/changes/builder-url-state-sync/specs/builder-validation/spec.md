@@ -2,7 +2,7 @@
 
 Defines input validation for the builder: GitHub username format validation with fetch blocking, field-level duplicate label warnings, and character count indicators for values approaching wrap limits.
 
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Username format validation
 The builder SHALL validate the GitHub username input against the format `^[a-zA-Z0-9]([a-zA-Z0-9-]{0,37}[a-zA-Z0-9])?$` and disable the Fetch button when the format is invalid.

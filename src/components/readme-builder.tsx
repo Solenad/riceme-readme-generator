@@ -1,6 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -39,7 +41,6 @@ import {
 } from "@/components/ui/select";
 import { THEMES, DEFAULT_THEME } from "@/lib/themes";
 import {
-  DEFAULT_FIELDS,
   MAX_FIELDS,
   addRowToFields,
   duplicateRowInFields,
@@ -51,6 +52,14 @@ import {
   type InfoField,
 } from "@/lib/fields";
 import {
+  readBuilderState,
+  writeToBuildUrl,
+  isValidUsername,
+  findDuplicateLabels,
+  type BuilderState,
+} from "@/lib/builder-state";
+import { BuilderShare } from "@/components/builder-share";
+import {
   Copy,
   Eye,
   EyeOff,
@@ -58,7 +67,53 @@ import {
   Plus,
   RotateCcw,
   Trash2,
+  ChevronDown,
+  ChevronUp,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  AlertCircle,
 } from "lucide-react";
+
+function yearsSince(dateStr: string): string {
+  const created = new Date(dateStr);
+  const now = new Date();
+  let years = now.getFullYear() - created.getFullYear();
+  const m = now.getMonth() - created.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < created.getDate())) years--;
+  return `${Math.max(1, years)} years on GitHub`;
+}
+
+async function fetchProfile(username: string) {
+  const res = await fetch(`https://api.github.com/users/${username}`, {
+    headers: { "User-Agent": "RiceMe" },
+  });
+  if (!res.ok) {
+    if (res.status === 404) throw new Error("User not found on GitHub");
+    if (res.status === 403)
+      throw new Error("Rate limited by GitHub. Try again later.");
+    throw new Error(`GitHub API error (${res.status})`);
+  }
+  return res.json();
+}
+
+function mapProfileToFields(
+  profile: Record<string, unknown>,
+): Record<string, string> {
+  const fields: Record<string, string> = {};
+  if (typeof profile.name === "string" && profile.name)
+    fields.host = profile.name;
+  if (typeof profile.bio === "string" && profile.bio)
+    fields.kernel = profile.bio;
+  if (typeof profile.company === "string" && profile.company)
+    fields.school = profile.company;
+  if (typeof profile.location === "string" && profile.location)
+    fields.distro = profile.location;
+  if (typeof profile.created_at === "string" && profile.created_at) {
+    fields.uptime = yearsSince(profile.created_at);
+  }
+  return fields;
+}
 
 function useDebounce<T>(value: T, delay: number): T {
   const [debounced, setDebounced] = useState(value);
@@ -127,8 +182,11 @@ const snippetItem = {
 };
 
 export function ReadmeBuilder() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
   const [origin, setOrigin] = useState("");
   const [username, setUsername] = useState("");
+  const [fetchTarget, setFetchTarget] = useState<string | null>(null);
   const [fields, setFields] = useState<InfoField[]>(() =>
     resetFieldsToDefaults(),
   );
@@ -136,17 +194,109 @@ export function ReadmeBuilder() {
   const [showCrt, setShowCrt] = useState(true);
   const [customAscii, setCustomAscii] = useState("");
   const [selectedTheme, setSelectedTheme] = useState(DEFAULT_THEME);
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [compressedAscii, setCompressedAscii] = useState("");
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [previewModalOpen, setPreviewModalOpen] = useState(false);
-  const [previewLoaded, setPreviewLoaded] = useState(true);
-  const [isPreviewUpdating, setIsPreviewUpdating] = useState(false);
-  const prevPreviewUrl = useRef<string | null>(null);
+  const [hasHydrated, setHasHydrated] = useState(false);
+  const [previewCollapsed, setPreviewCollapsed] = useState(false);
+  const [previewLoaded, setPreviewLoaded] = useState(false);
+  const hasHydratedRef = useRef(false);
 
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
+
+  // 2.2 Hydrate from URL on mount
+  useEffect(() => {
+    if (hasHydratedRef.current) return;
+    const params = new URLSearchParams(searchParams.toString());
+    const state = readBuilderState(params);
+    // Only hydrate if there is any meaningful state or f param? 
+    // readBuilderState handles empty -> resetFieldsToDefaults (fresh)
+    // For empty params, we keep initial defaults (2 empty) - no need to set
+    // But we still need to hydrate username/theme/toggles if present
+    if (state.username) setUsername(state.username);
+    if (state.theme) setSelectedTheme(state.theme);
+    setShowAscii(state.ascii);
+    setShowCrt(state.crt);
+    if (state.customAscii) setCustomAscii(state.customAscii);
+    // Hydrate fields: if params has any keys, use parsed fields; else keep defaults
+    const hasAnyParam = Array.from(params.keys()).length > 0;
+    if (hasAnyParam) {
+      setFields(state.fields);
+    }
+    hasHydratedRef.current = true;
+    setHasHydrated(true);
+  }, [searchParams]);
+
+  // 2.3 + 2.4 URL sync debounced 300ms
+  useEffect(() => {
+    if (!hasHydrated) return;
+    const timer = setTimeout(() => {
+      const state: BuilderState = {
+        username,
+        theme: selectedTheme,
+        ascii: showAscii,
+        crt: showCrt,
+        customAscii,
+        fields,
+      };
+      const url = writeToBuildUrl(state);
+      const current = `${window.location.pathname}${window.location.search}`;
+      // Avoid pushing identical URL
+      if (url !== current) {
+        router.replace(url, { scroll: false });
+      }
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [username, selectedTheme, showAscii, showCrt, customAscii, fields, hasHydrated, router]);
+
+  // 4.2 usernameError computed
+  const usernameError = useMemo(() => {
+    if (!username) return null;
+    if (!isValidUsername(username.trim())) {
+      return "Must be 1-39 chars, alphanumeric and hyphens";
+    }
+    return null;
+  }, [username]);
+
+  // 5.1 duplicate labels
+  const duplicateLabels = useMemo(() => findDuplicateLabels(fields), [fields]);
+
+  // 5.4 field count color
+  const fieldCountColor = useMemo(() => {
+    if (fields.length >= 16) return "text-red-500";
+    if (fields.length >= 14) return "text-yellow-500";
+    return "text-muted-foreground";
+  }, [fields.length]);
+
+  // 4.6 clear fetch status when username changes is handled via conditional rendering (username !== fetchTarget)
+
+  const profileQuery = useQuery({
+    queryKey: ["github-profile", fetchTarget],
+    queryFn: () => fetchProfile(fetchTarget!),
+    enabled: !!fetchTarget,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
+    meta: { errorMessage: "Failed to fetch profile" },
+  });
+
+  useEffect(() => {
+    if (profileQuery.data) {
+      const mapped = mapProfileToFields(profileQuery.data);
+      setFields((prev) =>
+        prev.map((f) =>
+          mapped[f.id] !== undefined ? { ...f, value: mapped[f.id] } : f,
+        ),
+      );
+      toast.success(`Fetched profile for ${fetchTarget}`, { duration: 2000 });
+    }
+  }, [profileQuery.data, fetchTarget]);
+
+  useEffect(() => {
+    if (profileQuery.error) {
+      toast.error(profileQuery.error.message, { duration: 4000 });
+    }
+  }, [profileQuery.error]);
 
   const debouncedFields = useDebounce(fields, 500);
   const debouncedUsername = useDebounce(username, 500);
@@ -177,18 +327,6 @@ export function ReadmeBuilder() {
     debouncedTheme,
     compressedAscii,
   );
-
-  useEffect(() => {
-    if (prevPreviewUrl.current === null) {
-      prevPreviewUrl.current = previewUrl;
-      return;
-    }
-    if (prevPreviewUrl.current !== previewUrl) {
-      prevPreviewUrl.current = previewUrl;
-      setIsPreviewUpdating(true);
-      setPreviewLoaded(false);
-    }
-  }, [previewUrl]);
 
   const updateRow = useCallback(
     (id: string, patch: Partial<Omit<InfoField, "id">>) => {
@@ -223,15 +361,18 @@ export function ReadmeBuilder() {
     setFields(resetFieldsToDefaults());
   }, []);
 
-  const copy = useCallback((text: string, key: string) => {
-    navigator.clipboard.writeText(text).then(
-      () => {
-        setCopiedKey(key);
-        setTimeout(() => setCopiedKey(null), 1500);
-      },
-      () => toast.error("Failed to copy"),
-    );
-  }, []);
+  const handleFetch = useCallback(() => {
+    const trimmed = username.trim();
+    if (!trimmed) {
+      toast.error("Enter a GitHub username first");
+      return;
+    }
+    if (usernameError) {
+      toast.error(usernameError);
+      return;
+    }
+    setFetchTarget(trimmed);
+  }, [username, usernameError]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -261,18 +402,48 @@ export function ReadmeBuilder() {
     [],
   );
 
-  const fullUrl = buildPreviewUrl(
-    origin,
-    username,
-    fields,
-    showAscii,
-    customAscii,
-    showCrt,
-    selectedTheme,
-    compressedAscii,
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "Enter") handleFetch();
+    },
+    [handleFetch],
   );
-  const markdown = `![${username}](${fullUrl})`;
-  const html = `<p align="center">\n  <img src="${fullUrl}" alt="${username}" />\n</p>`;
+
+  const builderState: BuilderState = useMemo(() => ({
+    username,
+    theme: selectedTheme,
+    ascii: showAscii,
+    crt: showCrt,
+    customAscii,
+    fields,
+  }), [username, selectedTheme, showAscii, showCrt, customAscii, fields]);
+
+  // Determine fetch status for inline display (4.5)
+  const fetchStatus = useMemo(() => {
+    if (!fetchTarget) return null;
+    if (username.trim() !== fetchTarget) return null; // cleared when username changes (4.6)
+    if (profileQuery.isFetching) return null; // handled via button spinner
+    if (profileQuery.data) {
+      const data = profileQuery.data as Record<string, unknown>;
+      const repos = typeof data.public_repos === "number" ? data.public_repos : 0;
+      const followers = typeof data.followers === "number" ? data.followers : 0;
+      return {
+        type: "success" as const,
+        message: `Profile found · ${repos} repos · ${followers} followers`,
+      };
+    }
+    if (profileQuery.error) {
+      const msg = (profileQuery.error as Error).message;
+      if (msg.includes("Rate limited")) {
+        return { type: "warning" as const, message: msg };
+      }
+      if (msg.includes("not found") || msg.includes("User not found")) {
+        return { type: "error" as const, message: "User not found on GitHub" };
+      }
+      return { type: "error" as const, message: "Failed to fetch profile" };
+    }
+    return null;
+  }, [fetchTarget, username, profileQuery.data, profileQuery.error, profileQuery.isFetching]);
 
   return (
     <motion.div
@@ -281,15 +452,47 @@ export function ReadmeBuilder() {
       initial="hidden"
       animate="show"
     >
-      <motion.div className="space-y-6" variants={slideLeft}>
+      {/* Form column - order 2 on mobile (below sticky preview), order 1 on desktop */}
+      <motion.div className="space-y-6 lg:order-1 order-2" variants={slideLeft}>
         <div>
-          <div className="mb-4">
-            <Label
-              htmlFor="gh-username"
-              className="mb-1.5 block text-xs text-muted-foreground"
+          <div className="mb-4 flex items-end gap-3">
+            <div className="flex-1">
+              <Label
+                htmlFor="gh-username"
+                className="mb-1.5 block text-xs text-muted-foreground"
+              >
+                GitHub Username
+              </Label>
+              <Input
+                id="gh-username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="e.g. Solenad"
+                className={`font-mono placeholder:text-muted-foreground/30 ${usernameError ? "border-red-500 focus-visible:ring-red-500" : ""}`}
+              />
+              {usernameError && (
+                <p className="mt-1.5 rounded border border-red-500/30 bg-red-500/10 px-2 py-1 text-xs text-red-500">
+                  {usernameError}
+                </p>
+              )}
+              {fetchStatus && (
+                <div className={`mt-1.5 flex items-center gap-1.5 text-xs ${fetchStatus.type === "success" ? "text-green-600" : fetchStatus.type === "warning" ? "text-yellow-600" : "text-red-500"}`}>
+                  {fetchStatus.type === "success" && <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />}
+                  {fetchStatus.type === "error" && <XCircle className="h-3.5 w-3.5 shrink-0" />}
+                  {fetchStatus.type === "warning" && <AlertTriangle className="h-3.5 w-3.5 shrink-0" />}
+                  <span>{fetchStatus.message}</span>
+                </div>
+              )}
+            </div>
+            <Button
+              onClick={handleFetch}
+              disabled={!!usernameError || !username.trim() || profileQuery.isFetching}
+              variant="default"
+              className="shrink-0"
             >
               GitHub Username
-            </Label>
+            </Button>
             <Input
               id="gh-username"
               value={username}
@@ -400,7 +603,7 @@ export function ReadmeBuilder() {
           <div className="flex items-center justify-between">
             <Label className="text-xs text-muted-foreground">
               Info rows{" "}
-              <span className="font-mono">
+              <span className={`font-mono ${fieldCountColor}`}>
                 ({fields.length}/{MAX_FIELDS})
               </span>
             </Label>
@@ -454,6 +657,7 @@ export function ReadmeBuilder() {
                       toggleVisible={toggleVisible}
                       removeRow={removeRow}
                       fieldsLength={fields.length}
+                      duplicateMap={duplicateLabels}
                     />
                   ))}
                 </AnimatePresence>
@@ -494,18 +698,29 @@ export function ReadmeBuilder() {
             </DndContext>
           </motion.div>
         </motion.div>
+
+        {/* Share buttons for mobile - below fields (6.6) */}
+        <motion.div
+          className="lg:hidden"
+          variants={snippetContainer}
+          initial="hidden"
+          animate="show"
+        >
+          <BuilderShare state={builderState} />
+        </motion.div>
       </motion.div>
 
-      <motion.div className="space-y-6" variants={slideRight}>
-        <div
-          className="group relative cursor-pointer overflow-hidden rounded-lg border border-border bg-card/40 p-2"
-          onClick={() => setPreviewModalOpen(true)}
-        >
-          {isPreviewUpdating && !previewLoaded && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center animate-pulse rounded bg-muted/50">
-              <span className="text-xs text-muted-foreground">Loading preview...</span>
-            </div>
-          )}
+      {/* Preview + Share (desktop) - sticky on mobile (6.2), collapsible (6.1, 6.3, 6.4) */}
+      <motion.div className="space-y-6 lg:order-2 order-1 lg:static sticky top-0 z-10" variants={slideRight}>
+        <div className={`relative overflow-hidden rounded-lg border border-border bg-card/40 p-2 transition-all duration-300 ${previewCollapsed ? "max-h-[60px] lg:max-h-none" : "max-h-[40vh] lg:max-h-none lg:overflow-visible"} lg:max-h-none`}>
+          <button
+            type="button"
+            onClick={() => setPreviewCollapsed(!previewCollapsed)}
+            aria-label={previewCollapsed ? "Expand preview" : "Collapse preview"}
+            className="absolute right-2 top-2 z-20 flex h-7 w-7 items-center justify-center rounded bg-card/80 backdrop-blur border border-border text-muted-foreground hover:text-foreground hover:bg-card transition-colors lg:hidden"
+          >
+            {previewCollapsed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+          </button>
           <img
             src={previewUrl}
             alt="README card preview"
@@ -515,7 +730,6 @@ export function ReadmeBuilder() {
             }}
             onLoad={() => {
               setPreviewLoaded(true);
-              setIsPreviewUpdating(false);
             }}
           />
           {previewLoaded && (
@@ -527,103 +741,19 @@ export function ReadmeBuilder() {
           )}
         </div>
 
+        {/* Share buttons for desktop - hidden on mobile */}
         <motion.div
-          className="space-y-3"
+          className="hidden lg:block space-y-3"
           variants={snippetContainer}
           initial="hidden"
           animate="show"
         >
-          <motion.div variants={snippetItem}>
-            <Snippet
-              label="Markdown"
-              value={markdown}
-              copied={copiedKey === "md"}
-              onCopy={() => copy(markdown, "md")}
-            />
-          </motion.div>
-          <motion.div variants={snippetItem}>
-            <Snippet
-              label="HTML (centered, for GitHub profile README)"
-              value={html}
-              copied={copiedKey === "html"}
-              onCopy={() => copy(html, "html")}
-            />
-          </motion.div>
-          <motion.div variants={snippetItem}>
-            <Snippet
-              label="Direct image URL"
-              value={fullUrl}
-              copied={copiedKey === "url"}
-              onCopy={() => copy(fullUrl, "url")}
-            />
-          </motion.div>
+          <BuilderShare state={builderState} />
         </motion.div>
       </motion.div>
 
-      <dialog
-        ref={(el) => {
-          if (el) {
-            if (previewModalOpen && !el.open) {
-              el.showModal();
-            } else if (!previewModalOpen && el.open) {
-              el.close();
-            }
-          }
-        }}
-        onClose={() => setPreviewModalOpen(false)}
-        onClick={(e) => {
-          if (e.target === e.currentTarget) setPreviewModalOpen(false);
-        }}
-        className="group fixed inset-0 z-50 m-auto max-w-4xl cursor-pointer rounded-lg border border-border bg-card p-0 backdrop:bg-black/60 backdrop:backdrop-blur-sm"
-      >
-        <div className="cursor-default p-4">
-          <button
-            type="button"
-            onClick={() => setPreviewModalOpen(false)}
-            className="absolute top-3 right-3 flex h-7 w-7 cursor-pointer items-center justify-center rounded-md bg-card/80 text-muted-foreground opacity-0 transition-all duration-200 group-hover:opacity-100 hover:text-foreground hover:bg-card"
-            aria-label="Close preview"
-          >
-            ✕
-          </button>
-          <img
-            key={previewUrl}
-            src={previewUrl}
-            alt="README card preview full size"
-            className="block w-full"
-          />
-        </div>
-      </dialog>
+      {/* Fallback share for desktop hidden duplicate handling - already above */}
     </motion.div>
-  );
-}
-
-function Snippet({
-  label,
-  value,
-  copied,
-  onCopy,
-}: {
-  label: string;
-  value: string;
-  copied: boolean;
-  onCopy: () => void;
-}) {
-  return (
-    <div>
-      <div className="mb-1.5 flex items-center justify-between text-xs">
-        <span className="text-muted-foreground">{label}</span>
-        <button
-          type="button"
-          onClick={onCopy}
-          className="cursor-pointer rounded border border-border bg-card px-2 py-1 font-bold text-term-green hover:border-term-green/60 hover:bg-card/80 transition-all duration-200 hover:scale-[1.03] active:scale-[0.97]"
-        >
-          {copied ? "copied ✓" : "copy"}
-        </button>
-      </div>
-      <pre className="overflow-x-auto rounded-md border border-border bg-card/60 p-3 text-xs text-foreground/90">
-        <code>{value}</code>
-      </pre>
-    </div>
   );
 }
 
@@ -662,6 +792,7 @@ function SortableRow({
   toggleVisible,
   removeRow,
   fieldsLength,
+  duplicateMap,
 }: {
   field: InfoField;
   index: number;
@@ -670,6 +801,7 @@ function SortableRow({
   toggleVisible: (id: string) => void;
   removeRow: (id: string) => void;
   fieldsLength: number;
+  duplicateMap: Map<string, number>;
 }) {
   const {
     attributes,
@@ -686,6 +818,14 @@ function SortableRow({
     transition,
     opacity: isDragging ? 0 : 1,
   };
+
+  const trimmedLabel = field.label.trim().toLowerCase();
+  const dupCount = trimmedLabel ? duplicateMap.get(trimmedLabel) : undefined;
+  const isDuplicate = dupCount !== undefined && dupCount > 1;
+
+  const valueLen = field.value.length;
+  const showCharCount = valueLen >= 48;
+  const charCountColor = valueLen >= 64 ? "text-yellow-500" : "text-muted-foreground";
 
   return (
     <div ref={setNodeRef} style={style}>
@@ -730,6 +870,12 @@ function SortableRow({
           aria-label={`Label for ${field.id}`}
           className="h-7 flex-1 font-mono text-xs placeholder:text-muted-foreground/30"
         />
+        {isDuplicate && (
+          <span className="flex shrink-0 items-center gap-1 text-xs text-yellow-600">
+            <AlertCircle className="h-3 w-3" />
+            appears {dupCount} times
+          </span>
+        )}
         <div className="flex shrink-0 items-center gap-0.5">
           <RowIconButton
             onClick={() => toggleVisible(field.id)}
@@ -766,6 +912,11 @@ function SortableRow({
           placeholder={field.placeholder ?? "Value"}
           className="h-8 flex-1 font-mono text-xs placeholder:text-muted-foreground/30"
         />
+        {showCharCount && (
+          <span className={`shrink-0 font-mono text-xs ${charCountColor}`}>
+            {valueLen}/64
+          </span>
+        )}
       </div>
       </motion.div>
     </div>

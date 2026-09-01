@@ -2,7 +2,7 @@
 
 Defines the share button variants: four distinct copy buttons that generate different URL types from the same internal builder state, each optimized for a specific use case.
 
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Share link button copies builder URL
 The "Copy share link" button SHALL copy a `/build?...` URL to the clipboard that opens the builder prefilled with the current state.
