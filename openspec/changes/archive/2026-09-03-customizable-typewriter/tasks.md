@@ -26,6 +26,6 @@
 
 ## 4. Integration & Polish
 
-- [ ] 4.1 Verify builder URL serialization round-trips correctly (set values → copy URL → open → values match)
-- [ ] 4.2 Verify SVG preview updates live when typewriter values change in builder
-- [ ] 4.3 Verify backward compatibility: existing card URLs without `tw_*` params render no typewriter animation
+- [x] 4.1 Verify builder URL serialization round-trips correctly (set values → copy URL → open → values match)
+- [x] 4.2 Verify SVG preview updates live when typewriter values change in builder
+- [x] 4.3 Verify backward compatibility: existing card URLs without `tw_*` params render no typewriter animation
