@@ -463,6 +463,9 @@ export function ReadmeBuilder() {
               >
                 GitHub Username
               </Label>
+              <p className="mb-1.5 text-[11px] text-muted-foreground/60">
+                Fetch to populate profile info and stats
+              </p>
               <Input
                 id="gh-username"
                 value={username}
@@ -491,15 +494,8 @@ export function ReadmeBuilder() {
               variant="default"
               className="shrink-0"
             >
-              GitHub Username
+              {profileQuery.isFetching ? "Fetching..." : "Fetch Profile"}
             </Button>
-            <Input
-              id="gh-username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="e.g. Solenad"
-              className="font-mono placeholder:text-muted-foreground/30"
-            />
           </div>
           <div className="flex items-center gap-3">
             <Switch
