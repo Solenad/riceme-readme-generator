@@ -245,10 +245,6 @@ export async function GET(request: Request) {
     valueLines: wrapText(row.value, maxValueChars),
   }));
 
-  const numX = infoX;
-  const labelX = infoX + numColW + numGap;
-  const valueX = labelX + keyColW;
-
   let nextInfoY = rowStartY;
   const infoRows = renderedInfo
     .map((row) => {
