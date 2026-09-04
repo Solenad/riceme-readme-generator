@@ -239,11 +239,17 @@ export async function GET(request: Request) {
   const maxValueWidth = Math.max(120, sepEndX - (infoX + numColW + numGap + keyColW));
   const maxValueChars = Math.max(12, Math.floor(maxValueWidth / valueCharW));
 
-  const renderedInfo = info.map((row, i) => ({
-    ...row,
-    index: i + 1,
-    valueLines: wrapText(row.value, maxValueChars),
-  }));
+  const renderedInfo = info
+    .filter((row) => row.label.trim().length > 0 || row.value.trim().length > 0)
+    .map((row, i) => ({
+      ...row,
+      index: i + 1,
+      valueLines: wrapText(row.value, maxValueChars),
+    }));
+
+  const numX = infoX;
+  const labelX = infoX + numColW + numGap;
+  const valueX = labelX + keyColW;
 
   let nextInfoY = rowStartY;
   const infoRows = renderedInfo
