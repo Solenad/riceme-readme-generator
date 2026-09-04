@@ -28,8 +28,14 @@ import { lzStringEncode } from "@/lib/compress";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Slider } from "@/components/ui/slider";
 import {
   Select,
   SelectContent,
@@ -56,7 +62,9 @@ import {
   writeToBuildUrl,
   isValidUsername,
   findDuplicateLabels,
+  DEFAULT_TYPEWRITER,
   type BuilderState,
+  type TypewriterState,
 } from "@/lib/builder-state";
 import { BuilderShare } from "@/components/builder-share";
 import {
@@ -199,6 +207,8 @@ export function ReadmeBuilder() {
   const [hasHydrated, setHasHydrated] = useState(false);
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [previewLoaded, setPreviewLoaded] = useState(false);
+  const [typewriter, setTypewriter] = useState<TypewriterState>(DEFAULT_TYPEWRITER);
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const hasHydratedRef = useRef(false);
 
   useEffect(() => {
@@ -219,6 +229,7 @@ export function ReadmeBuilder() {
     setShowAscii(state.ascii);
     setShowCrt(state.crt);
     if (state.customAscii) setCustomAscii(state.customAscii);
+    setTypewriter(state.typewriter);
     // Hydrate fields: if params has any keys, use parsed fields; else keep defaults
     const hasAnyParam = Array.from(params.keys()).length > 0;
     if (hasAnyParam) {
@@ -239,6 +250,7 @@ export function ReadmeBuilder() {
         crt: showCrt,
         customAscii,
         fields,
+        typewriter,
       };
       const url = writeToBuildUrl(state);
       const current = `${window.location.pathname}${window.location.search}`;
@@ -248,7 +260,7 @@ export function ReadmeBuilder() {
       }
     }, 300);
     return () => clearTimeout(timer);
-  }, [username, selectedTheme, showAscii, showCrt, customAscii, fields, hasHydrated, router]);
+  }, [username, selectedTheme, showAscii, showCrt, customAscii, fields, typewriter, hasHydrated, router]);
 
   // 4.2 usernameError computed
   const usernameError = useMemo(() => {
@@ -326,6 +338,7 @@ export function ReadmeBuilder() {
     showCrt,
     debouncedTheme,
     compressedAscii,
+    typewriter,
   );
 
   const updateRow = useCallback(
@@ -416,7 +429,8 @@ export function ReadmeBuilder() {
     crt: showCrt,
     customAscii,
     fields,
-  }), [username, selectedTheme, showAscii, showCrt, customAscii, fields]);
+    typewriter,
+  }), [username, selectedTheme, showAscii, showCrt, customAscii, fields, typewriter]);
 
   // Determine fetch status for inline display (4.5)
   const fetchStatus = useMemo(() => {
@@ -446,6 +460,7 @@ export function ReadmeBuilder() {
   }, [fetchTarget, username, profileQuery.data, profileQuery.error, profileQuery.isFetching]);
 
   return (
+    <>
     <motion.div
       className="grid grid-cols-1 gap-8 lg:grid-cols-2"
       variants={builderContainer}
@@ -463,6 +478,9 @@ export function ReadmeBuilder() {
               >
                 GitHub Username
               </Label>
+              <p className="mb-1.5 text-[11px] text-muted-foreground/60">
+                Fetch to populate profile info and stats
+              </p>
               <Input
                 id="gh-username"
                 value={username}
@@ -491,15 +509,8 @@ export function ReadmeBuilder() {
               variant="default"
               className="shrink-0"
             >
-              GitHub Username
+              {profileQuery.isFetching ? "Fetching..." : "Fetch Profile"}
             </Button>
-            <Input
-              id="gh-username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="e.g. Solenad"
-              className="font-mono placeholder:text-muted-foreground/30"
-            />
           </div>
           <div className="flex items-center gap-3">
             <Switch
@@ -699,6 +710,68 @@ export function ReadmeBuilder() {
           </motion.div>
         </motion.div>
 
+        <div className="space-y-3">
+          <Label className="text-xs text-muted-foreground">Typewriter</Label>
+          <div className="space-y-2">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <Label htmlFor="tw-phrase1" className="text-xs text-muted-foreground">Phrase 1</Label>
+                <span className="font-mono text-xs text-muted-foreground/50">{typewriter.phrase1.length}/48</span>
+              </div>
+              <Input
+                id="tw-phrase1"
+                value={typewriter.phrase1}
+                maxLength={48}
+                onChange={(e) => setTypewriter((prev) => ({ ...prev, phrase1: e.target.value }))}
+                placeholder="First phrase to type..."
+                className="font-mono text-xs placeholder:text-muted-foreground/30"
+              />
+            </div>
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <Label htmlFor="tw-phrase2" className="text-xs text-muted-foreground">Phrase 2</Label>
+                <span className="font-mono text-xs text-muted-foreground/50">{typewriter.phrase2.length}/48</span>
+              </div>
+              <Input
+                id="tw-phrase2"
+                value={typewriter.phrase2}
+                maxLength={48}
+                onChange={(e) => setTypewriter((prev) => ({ ...prev, phrase2: e.target.value }))}
+                placeholder="Second phrase to type..."
+                className="font-mono text-xs placeholder:text-muted-foreground/30"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Label className="text-xs text-muted-foreground">Speed</Label>
+                  <span className="font-mono text-xs text-muted-foreground/50">{typewriter.speed.toFixed(1)}x</span>
+                </div>
+                <Slider
+                  value={[typewriter.speed]}
+                  min={0.5}
+                  max={2.0}
+                  step={0.1}
+                  onValueChange={([v]) => setTypewriter((prev) => ({ ...prev, speed: v }))}
+                />
+              </div>
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <Label className="text-xs text-muted-foreground">Pause</Label>
+                  <span className="font-mono text-xs text-muted-foreground/50">{typewriter.pause}ms</span>
+                </div>
+                <Slider
+                  value={[typewriter.pause]}
+                  min={0}
+                  max={3000}
+                  step={100}
+                  onValueChange={([v]) => setTypewriter((prev) => ({ ...prev, pause: v }))}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Share buttons for mobile - below fields (6.6) */}
         <motion.div
           className="lg:hidden"
@@ -721,24 +794,29 @@ export function ReadmeBuilder() {
           >
             {previewCollapsed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
-          <img
-            src={previewUrl}
-            alt="README card preview"
-            className={`block w-full transition-opacity duration-300 group-hover:blur-[2px] ${previewLoaded ? "opacity-100" : "opacity-0"}`}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.opacity = "0.5";
-            }}
-            onLoad={() => {
-              setPreviewLoaded(true);
-            }}
-          />
-          {previewLoaded && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-              <span className="text-xs font-medium text-foreground drop-shadow-md">
-                Preview
-              </span>
-            </div>
-          )}
+          <div className="relative cursor-pointer group" onClick={() => setPreviewModalOpen(true)}>
+            {!previewLoaded && (
+              <div className="absolute inset-0 animate-pulse rounded-md bg-muted" />
+            )}
+            <img
+              src={previewUrl}
+              alt="README card preview"
+              className={`block w-full transition-all duration-300 group-hover:blur-[2px] ${previewLoaded ? "opacity-100" : "opacity-0"}`}
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.opacity = "0.5";
+              }}
+              onLoad={() => {
+                setPreviewLoaded(true);
+              }}
+            />
+            {previewLoaded && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                <span className="text-xs font-medium text-foreground/80 drop-shadow-md">
+                  View
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Share buttons for desktop - hidden on mobile */}
@@ -754,6 +832,30 @@ export function ReadmeBuilder() {
 
       {/* Fallback share for desktop hidden duplicate handling - already above */}
     </motion.div>
+
+    <Dialog open={previewModalOpen} onOpenChange={setPreviewModalOpen}>
+      <DialogContent
+        className="max-w-3xl p-0 bg-transparent border-none shadow-none cursor-pointer"
+        onPointerDownOutside={() => setPreviewModalOpen(false)}
+      >
+        <DialogTitle className="sr-only">README Preview</DialogTitle>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setPreviewModalOpen(false)}
+            className="absolute -top-8 right-0 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer z-50"
+          >
+            X Close
+          </button>
+          <img
+            src={previewUrl}
+            alt="README card preview"
+            className="block w-full rounded-lg"
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
@@ -932,6 +1034,7 @@ function buildPreviewUrl(
   showCrt?: boolean,
   theme?: string,
   compressedAscii?: string,
+  typewriter?: TypewriterState,
 ): string {
   const params = new URLSearchParams();
   params.set("username", username);
@@ -945,6 +1048,12 @@ function buildPreviewUrl(
     params.set("aa", compressedAscii);
   } else if (customAscii) {
     params.set("ascii_art", customAscii.replace(/\n/g, "\\n"));
+  }
+  if (typewriter) {
+    if (typewriter.phrase1) params.set("tw_p1", typewriter.phrase1);
+    if (typewriter.phrase2) params.set("tw_p2", typewriter.phrase2);
+    if (typewriter.speed !== 1.0) params.set("tw_spd", String(typewriter.speed));
+    if (typewriter.pause !== 500) params.set("tw_pau", String(typewriter.pause));
   }
   const base = origin || "http://localhost:3000";
   return `${base}/api/public/readme.svg?${params.toString()}`;

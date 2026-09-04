@@ -7,6 +7,20 @@ import {
   type InfoField,
 } from "@/lib/fields";
 
+export interface TypewriterState {
+  phrase1: string;
+  phrase2: string;
+  speed: number;
+  pause: number;
+}
+
+export const DEFAULT_TYPEWRITER: TypewriterState = {
+  phrase1: "",
+  phrase2: "",
+  speed: 1.0,
+  pause: 500,
+};
+
 export interface BuilderState {
   username: string;
   theme: string;
@@ -14,6 +28,7 @@ export interface BuilderState {
   crt: boolean;
   customAscii: string;
   fields: InfoField[];
+  typewriter: TypewriterState;
 }
 
 /**
@@ -71,6 +86,11 @@ function buildSharedParams(state: BuilderState): URLSearchParams {
     params.set("aa", compressed);
   }
 
+  if (state.typewriter.phrase1) params.set("tw_p1", state.typewriter.phrase1);
+  if (state.typewriter.phrase2) params.set("tw_p2", state.typewriter.phrase2);
+  if (state.typewriter.speed !== 1.0) params.set("tw_spd", String(state.typewriter.speed));
+  if (state.typewriter.pause !== 500) params.set("tw_pau", String(state.typewriter.pause));
+
   return params;
 }
 
@@ -111,6 +131,15 @@ export function readBuilderState(params: URLSearchParams): BuilderState {
     customAscii = rawAsciiArt.replace(/\\n/g, "\n");
   }
 
+  const phrase1 = params.get("tw_p1") ?? "";
+  const phrase2 = params.get("tw_p2") ?? "";
+  const speed = params.get("tw_spd") !== null
+    ? Math.min(2.0, Math.max(0.5, Number(params.get("tw_spd")) || 1.0))
+    : 1.0;
+  const pause = params.get("tw_pau") !== null
+    ? Math.min(3000, Math.max(0, Number(params.get("tw_pau")) || 500))
+    : 500;
+
   // Determine palette from theme for field parsing
   const themeObj = getTheme(theme);
   let fields: InfoField[];
@@ -130,5 +159,6 @@ export function readBuilderState(params: URLSearchParams): BuilderState {
     crt,
     customAscii,
     fields,
+    typewriter: { phrase1, phrase2, speed, pause },
   };
 }

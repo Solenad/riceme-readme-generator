@@ -98,91 +98,131 @@ async function fetchStats(username: string) {
 }
 
 // ── Typewriter animation config ──────────────────────────────────
-const TW_P1 = "i have something very important to say";
-const TW_P2 = "tung tung tung sahur";
-const TW_CYCLE_MS = 9500;
-const TW_PHASE: Array<{ dur: number; label: string }> = [
-  { dur: 2400, label: "type p1" },
-  { dur: 1500, label: "hold p1" },
-  { dur: 600, label: "delete p1" },
-  { dur: 500, label: "hold empty" },
-  { dur: 2700, label: "type p2" },
-  { dur: 3000, label: "hold p2" },
-];
-
-const PHASE_OFFSETS: number[] = [];
-let acc = 0;
-for (const p of TW_PHASE) {
-  PHASE_OFFSETS.push(acc);
-  acc += p.dur;
-}
-const TOTAL = acc;
-
-function pct(ms: number): number {
-  return (ms / TOTAL) * 100;
+function pct(ms: number, total: number): number {
+  return (ms / total) * 100;
 }
 
-function genTwCSS(): string {
-  const p1In = PHASE_OFFSETS[0];
-  const p1InEnd = PHASE_OFFSETS[1];
-  const p1Hold = PHASE_OFFSETS[2];
-  const p1Out = PHASE_OFFSETS[3];
-  const p1OutEnd = PHASE_OFFSETS[4];
-  const chars1 = TW_P1.length;
+function genTwCSS(phrase1: string, phrase2: string, speed: number, pause: number): string {
+  const hasP1 = phrase1.length > 0;
+  const hasP2 = phrase2.length > 0;
+  if (!hasP1 && !hasP2) return "";
 
-  const p1Stops: string[] = [];
-  for (let i = 0; i <= chars1; i++) {
-    const t = pct(p1In + (i / chars1) * (p1InEnd - p1In));
-    const right = ((chars1 - i) / chars1) * 100;
-    p1Stops.push(
-      `    ${t.toFixed(2)}%{clip-path:inset(0 ${right.toFixed(1)}% 0 0)}`,
-    );
+  const invSpeed = 1 / speed;
+
+  // Base durations (at 1x speed)
+  const typeP1 = hasP1 ? phrase1.length * 80 : 0;
+  const holdP1 = 1500;
+  const deleteP1 = hasP1 ? phrase1.length * 50 : 0;
+  const holdEmpty = 500;
+  const typeP2 = hasP2 ? phrase2.length * 80 : 0;
+  const holdP2 = 3000;
+
+  // Effective durations (scaled by speed)
+  const eTypeP1 = typeP1 * invSpeed;
+  const eHoldP1 = holdP1 * invSpeed;
+  const eDeleteP1 = deleteP1 * invSpeed;
+  const eHoldEmpty = holdEmpty * invSpeed;
+  const ePause = pause * invSpeed;
+  const eTypeP2 = typeP2 * invSpeed;
+  const eHoldP2 = holdP2 * invSpeed;
+
+  // Compute total and phase offsets based on which phrases exist
+  let total: number;
+  let p1In = 0;
+  let p1InEnd = 0;
+  let p1Hold = 0;
+  let p1Out = 0;
+  let p1OutEnd = 0;
+  let p2In = 0;
+  let p2InEnd = 0;
+  let p2Hold = 0;
+
+  if (hasP1 && hasP2) {
+    p1In = 0;
+    p1InEnd = eTypeP1;
+    p1Hold = p1InEnd + eHoldP1;
+    p1Out = p1Hold + eDeleteP1;
+    p1OutEnd = p1Out + eHoldEmpty;
+    p2In = p1OutEnd + ePause;
+    p2InEnd = p2In + eTypeP2;
+    p2Hold = p2InEnd + eHoldP2;
+    total = p2Hold;
+  } else if (hasP1) {
+    p1In = 0;
+    p1InEnd = eTypeP1;
+    p1Hold = p1InEnd + eHoldP1;
+    p1Out = p1Hold + eDeleteP1;
+    total = p1Out;
+  } else {
+    // hasP2 only
+    p2In = 0;
+    p2InEnd = eTypeP2;
+    p2Hold = p2InEnd + eHoldP2;
+    total = p2Hold;
   }
-  p1Stops.push(`    ${pct(p1Hold).toFixed(2)}%{clip-path:inset(0 0% 0 0)}`);
-  for (let i = 1; i <= chars1; i++) {
-    const t = pct(p1Hold + (i / chars1) * (p1Out - p1Hold));
-    const right = (i / chars1) * 100;
-    p1Stops.push(
-      `    ${t.toFixed(2)}%{clip-path:inset(0 ${right.toFixed(1)}% 0 0)}`,
-    );
+
+  const cssParts: string[] = [];
+
+  if (hasP1) {
+    const chars1 = phrase1.length;
+    const p1Stops: string[] = [];
+    for (let i = 0; i <= chars1; i++) {
+      const t = pct(p1In + (i / chars1) * (p1InEnd - p1In), total);
+      const right = ((chars1 - i) / chars1) * 100;
+      p1Stops.push(
+        `    ${t.toFixed(2)}%{clip-path:inset(0 ${right.toFixed(1)}% 0 0)}`,
+      );
+    }
+    p1Stops.push(`    ${pct(p1Hold, total).toFixed(2)}%{clip-path:inset(0 0% 0 0)}`);
+    for (let i = 1; i <= chars1; i++) {
+      const t = pct(p1Hold + (i / chars1) * (p1Out - p1Hold), total);
+      const right = (i / chars1) * 100;
+      p1Stops.push(
+        `    ${t.toFixed(2)}%{clip-path:inset(0 ${right.toFixed(1)}% 0 0)}`,
+      );
+    }
+    p1Stops.push(`    ${pct(p1Out, total).toFixed(2)}%{clip-path:inset(0 100% 0 0)}`);
+    p1Stops.push(`    100%{clip-path:inset(0 100% 0 0)}`);
+    cssParts.push(`      @keyframes tw-p1{${p1Stops.join("")}}`);
+    cssParts.push(`      .tw-p1{animation:tw-p1 ${Math.round(total)}ms step-end infinite}`);
   }
-  p1Stops.push(`    ${pct(p1OutEnd).toFixed(2)}%{clip-path:inset(0 100% 0 0)}`);
-  p1Stops.push(`    100%{clip-path:inset(0 100% 0 0)}`);
 
-  const p2In = PHASE_OFFSETS[4];
-  const p2InEnd = PHASE_OFFSETS[5];
-  const p2Hold = PHASE_OFFSETS[6];
-  const chars2 = TW_P2.length;
-
-  const p2Stops: string[] = [];
-  p2Stops.push(`    0%{clip-path:inset(0 100% 0 0)}`);
-  p2Stops.push(`    ${pct(p2In).toFixed(2)}%{clip-path:inset(0 100% 0 0)}`);
-  for (let i = 1; i <= chars2; i++) {
-    const t = pct(p2In + (i / chars2) * (p2InEnd - p2In));
-    const right = ((chars2 - i) / chars2) * 100;
-    p2Stops.push(
-      `    ${t.toFixed(2)}%{clip-path:inset(0 ${right.toFixed(1)}% 0 0)}`,
-    );
+  if (hasP2) {
+    const chars2 = phrase2.length;
+    const p2Stops: string[] = [];
+    if (hasP1) {
+      p2Stops.push(`    0%{clip-path:inset(0 100% 0 0)}`);
+      p2Stops.push(`    ${pct(p2In, total).toFixed(2)}%{clip-path:inset(0 100% 0 0)}`);
+    } else {
+      p2Stops.push(`    0%{clip-path:inset(0 100% 0 0)}`);
+    }
+    for (let i = 1; i <= chars2; i++) {
+      const t = pct(p2In + (i / chars2) * (p2InEnd - p2In), total);
+      const right = ((chars2 - i) / chars2) * 100;
+      p2Stops.push(
+        `    ${t.toFixed(2)}%{clip-path:inset(0 ${right.toFixed(1)}% 0 0)}`,
+      );
+    }
+    p2Stops.push(`    ${pct(p2Hold, total).toFixed(2)}%{clip-path:inset(0 0% 0 0)}`);
+    p2Stops.push(`    100%{clip-path:inset(0 0% 0 0)}`);
+    cssParts.push(`      @keyframes tw-p2{${p2Stops.join("")}}`);
+    cssParts.push(`      .tw-p2{animation:tw-p2 ${Math.round(total)}ms step-end infinite}`);
   }
-  p2Stops.push(`    ${pct(p2Hold).toFixed(2)}%{clip-path:inset(0 0% 0 0)}`);
-  p2Stops.push(`    100%{clip-path:inset(0 0% 0 0)}`);
 
-  const cemptyStops: string[] = [];
-  cemptyStops.push(`    0%{opacity:0}`);
-  cemptyStops.push(`    ${pct(p1Out).toFixed(2)}%{opacity:0}`);
-  cemptyStops.push(`    ${(pct(p1Out) + 0.05).toFixed(2)}%{opacity:1}`);
-  cemptyStops.push(`    ${pct(p2In).toFixed(2)}%{opacity:1}`);
-  cemptyStops.push(`    ${(pct(p2In) + 0.05).toFixed(2)}%{opacity:0}`);
-  cemptyStops.push(`    100%{opacity:0}`);
+  if (hasP1 && hasP2) {
+    const cemptyStops: string[] = [];
+    cemptyStops.push(`    0%{opacity:0}`);
+    cemptyStops.push(`    ${pct(p1Out, total).toFixed(2)}%{opacity:0}`);
+    cemptyStops.push(`    ${(pct(p1Out, total) + 0.05).toFixed(2)}%{opacity:1}`);
+    cemptyStops.push(`    ${pct(p2In, total).toFixed(2)}%{opacity:1}`);
+    cemptyStops.push(`    ${(pct(p2In, total) + 0.05).toFixed(2)}%{opacity:0}`);
+    cemptyStops.push(`    100%{opacity:0}`);
+    cssParts.push(`      @keyframes tw-cempty{${cemptyStops.join("")}}`);
+    cssParts.push(`      .tw-cempty{animation:tw-cempty ${Math.round(total)}ms step-end infinite}`);
+  }
 
-  return `
-      @keyframes tw-p1{${p1Stops.join("")}}
-      @keyframes tw-p2{${p2Stops.join("")}}
-      @keyframes tw-cempty{${cemptyStops.join("")}}
-      .tw-p1{animation:tw-p1 ${TW_CYCLE_MS}ms step-end infinite}
-      .tw-p2{animation:tw-p2 ${TW_CYCLE_MS}ms step-end infinite}
-      .tw-cempty{animation:tw-cempty ${TW_CYCLE_MS}ms step-end infinite}
-      .tw-box{clip-path:inset(0 100% 0 0)}`;
+  cssParts.push(`      .tw-box{clip-path:inset(0 100% 0 0)}`);
+  return "\n" + cssParts.join("\n") + "\n";
 }
 
 function buildInfo(params: URLSearchParams, theme: Theme) {
@@ -205,6 +245,15 @@ export async function GET(request: Request) {
   const theme = getTheme(themeName);
   const info = buildInfo(searchParams, theme);
   const stats = await fetchStats(username);
+
+  const twPhrase1 = searchParams.get("tw_p1") ?? "";
+  const twPhrase2 = searchParams.get("tw_p2") ?? "";
+  const twSpeed = searchParams.get("tw_spd") !== null
+    ? Math.min(2.0, Math.max(0.5, Number(searchParams.get("tw_spd")) || 1.0))
+    : 1.0;
+  const twPause = searchParams.get("tw_pau") !== null
+    ? Math.min(3000, Math.max(0, Number(searchParams.get("tw_pau")) || 500))
+    : 500;
 
   const W = 900;
 
@@ -387,9 +436,7 @@ export async function GET(request: Request) {
       @keyframes blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
       .blink { animation: blink 1s step-end infinite; }
       @keyframes glow { 0%, 100% { opacity: 0.7; } 50% { opacity: 1; } }
-      .pulse { animation: glow 2.5s ease-in-out infinite; }
-      ${genTwCSS()}
-      ${crtCss}
+      .pulse { animation: glow 2.5s ease-in-out infinite; }${genTwCSS(twPhrase1, twPhrase2, twSpeed, twPause)}${crtCss}
     </style>
   </defs>
 
@@ -437,17 +484,16 @@ export async function GET(request: Request) {
 
   <text x="30" y="${H - 30}" font-size="13" filter="url(#phosphor-glow)">
     <tspan fill="${theme.prompt}">~</tspan><tspan fill="${theme.muted}"> </tspan><tspan fill="${theme.promptAccent}">❯</tspan><tspan fill="${theme.muted}"> </tspan>
-  </text>
+  </text>${twPhrase1 ? `
   <g class="tw-p1 tw-box">
-    <text x="65" y="${H - 30}" font-size="13" font-family="monospace" fill="${theme.fg}">${esc(TW_P1)}<tspan><animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.49;0.5;1" dur="1s" repeatCount="indefinite" />▍</tspan></text>
-  </g>
+    <text x="65" y="${H - 30}" font-size="13" font-family="monospace" fill="${theme.fg}">${esc(twPhrase1)}<tspan><animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.49;0.5;1" dur="1s" repeatCount="indefinite" />▍</tspan></text>
+  </g>` : ""}${twPhrase2 ? `
   <g class="tw-p2 tw-box">
-    <text x="65" y="${H - 30}" font-size="13" font-family="monospace" fill="${theme.fg}">${esc(TW_P2)}<tspan><animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.49;0.5;1" dur="1s" repeatCount="indefinite" />▍</tspan></text>
-  </g>
+    <text x="65" y="${H - 30}" font-size="13" font-family="monospace" fill="${theme.fg}">${esc(twPhrase2)}<tspan><animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.49;0.5;1" dur="1s" repeatCount="indefinite" />▍</tspan></text>
+  </g>` : ""}${twPhrase1 && twPhrase2 ? `
   <g class="tw-cempty">
     <text x="65" y="${H - 30}" font-size="13" font-family="monospace" fill="${theme.fg}"><animate attributeName="opacity" values="1;1;0;0" keyTimes="0;0.49;0.5;1" dur="1s" repeatCount="indefinite" />▍</text>
-  </g>
-  ${crtOverlay}
+  </g>` : ""}${crtOverlay}
 </svg>`;
 
   return new Response(svg, {
