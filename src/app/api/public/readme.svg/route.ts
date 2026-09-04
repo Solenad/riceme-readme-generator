@@ -259,9 +259,16 @@ export async function GET(request: Request) {
       nextInfoY += rowHeight + rowGap;
 
       const hasLabel = row.label.trim().length > 0;
+      const hasValue = row.value.trim().length > 0;
       const numStr = String(row.index).padStart(2, "0");
 
-      if (!hasLabel) {
+      if (!hasLabel && !hasValue) {
+        return `<g>
+    <text x="${numX}" y="${y}" font-size="10" fill="${theme.muted}" font-family="monospace">${numStr}</text>
+  </g>`;
+      }
+
+      if (!hasLabel && hasValue) {
         return `<g>
     <text x="${numX}" y="${y}" font-size="10" fill="${theme.muted}" font-family="monospace">${numStr}</text>
     <text x="${labelX}" y="${y}" font-size="${labelFontSize}" font-weight="700" fill="${row.color}">${esc(row.valueLines[0])}</text>

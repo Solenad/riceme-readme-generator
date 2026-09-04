@@ -2,7 +2,7 @@
 
 Defines the mobile responsive behavior: on viewports below the `lg` breakpoint (1024px), the SVG preview panel sticks to the top of the viewport while the form scrolls below, with a collapsible toggle to maximize form space.
 
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Sticky preview on mobile
 On viewports below `lg` (1024px), the SVG preview container SHALL use `position: sticky; top: 0; z-index: 10` to remain visible while the user scrolls the form.

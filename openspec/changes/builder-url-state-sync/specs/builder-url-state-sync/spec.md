@@ -2,7 +2,7 @@
 
 Defines bidirectional URL ↔ builder state synchronization: the builder reads URL params on mount to hydrate state, and every state change syncs back to the URL via `replaceState`. The URL is the sole persistence layer — no database, no localStorage.
 
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Builder hydrates from URL on mount
 The builder SHALL read URL search params on initial mount and use them to populate all builder state (username, theme, ASCII toggle, CRT toggle, custom ASCII, fields).
