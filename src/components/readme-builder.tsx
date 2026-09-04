@@ -28,6 +28,11 @@ import { lzStringEncode } from "@/lib/compress";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Slider } from "@/components/ui/slider";
@@ -203,6 +208,7 @@ export function ReadmeBuilder() {
   const [previewCollapsed, setPreviewCollapsed] = useState(false);
   const [previewLoaded, setPreviewLoaded] = useState(false);
   const [typewriter, setTypewriter] = useState<TypewriterState>(DEFAULT_TYPEWRITER);
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const hasHydratedRef = useRef(false);
 
   useEffect(() => {
@@ -454,6 +460,7 @@ export function ReadmeBuilder() {
   }, [fetchTarget, username, profileQuery.data, profileQuery.error, profileQuery.isFetching]);
 
   return (
+    <>
     <motion.div
       className="grid grid-cols-1 gap-8 lg:grid-cols-2"
       variants={builderContainer}
@@ -471,6 +478,9 @@ export function ReadmeBuilder() {
               >
                 GitHub Username
               </Label>
+              <p className="mb-1.5 text-[11px] text-muted-foreground/60">
+                Fetch to populate profile info and stats
+              </p>
               <Input
                 id="gh-username"
                 value={username}
@@ -499,15 +509,8 @@ export function ReadmeBuilder() {
               variant="default"
               className="shrink-0"
             >
-              GitHub Username
+              {profileQuery.isFetching ? "Fetching..." : "Fetch Profile"}
             </Button>
-            <Input
-              id="gh-username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              placeholder="e.g. Solenad"
-              className="font-mono placeholder:text-muted-foreground/30"
-            />
           </div>
           <div className="flex items-center gap-3">
             <Switch
@@ -791,24 +794,29 @@ export function ReadmeBuilder() {
           >
             {previewCollapsed ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
           </button>
-          <img
-            src={previewUrl}
-            alt="README card preview"
-            className={`block w-full transition-opacity duration-300 group-hover:blur-[2px] ${previewLoaded ? "opacity-100" : "opacity-0"}`}
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.opacity = "0.5";
-            }}
-            onLoad={() => {
-              setPreviewLoaded(true);
-            }}
-          />
-          {previewLoaded && (
-            <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-              <span className="text-xs font-medium text-foreground drop-shadow-md">
-                Preview
-              </span>
-            </div>
-          )}
+          <div className="relative cursor-pointer group" onClick={() => setPreviewModalOpen(true)}>
+            {!previewLoaded && (
+              <div className="absolute inset-0 animate-pulse rounded-md bg-muted" />
+            )}
+            <img
+              src={previewUrl}
+              alt="README card preview"
+              className={`block w-full transition-all duration-300 group-hover:blur-[2px] ${previewLoaded ? "opacity-100" : "opacity-0"}`}
+              onError={(e) => {
+                (e.target as HTMLImageElement).style.opacity = "0.5";
+              }}
+              onLoad={() => {
+                setPreviewLoaded(true);
+              }}
+            />
+            {previewLoaded && (
+              <div className="absolute inset-0 z-20 flex items-center justify-center opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                <span className="text-xs font-medium text-foreground/80 drop-shadow-md">
+                  View
+                </span>
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Share buttons for desktop - hidden on mobile */}
@@ -824,6 +832,30 @@ export function ReadmeBuilder() {
 
       {/* Fallback share for desktop hidden duplicate handling - already above */}
     </motion.div>
+
+    <Dialog open={previewModalOpen} onOpenChange={setPreviewModalOpen}>
+      <DialogContent
+        className="max-w-3xl p-0 bg-transparent border-none shadow-none cursor-pointer"
+        onPointerDownOutside={() => setPreviewModalOpen(false)}
+      >
+        <DialogTitle className="sr-only">README Preview</DialogTitle>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setPreviewModalOpen(false)}
+            className="absolute -top-8 right-0 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer z-50"
+          >
+            X Close
+          </button>
+          <img
+            src={previewUrl}
+            alt="README card preview"
+            className="block w-full rounded-lg"
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
