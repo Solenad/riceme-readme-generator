@@ -144,7 +144,7 @@ function resolveRow(
     rawValue !== null ? rawValue : hasExplicitFields ? "" : (def?.value ?? "");
   const label = params.get(`${id}_label`) ?? def?.label ?? id;
   const color =
-    params.get(`${id}_color`) ?? def?.color ?? palette[index % palette.length];
+    params.get(`${id}_color`) || def?.color || palette[index % palette.length];
   return {
     id,
     label,
@@ -165,7 +165,7 @@ export function parseFields(
       id: f.id,
       label: params.get(`${f.id}_label`) ?? f.id,
       value: params.get(f.id) ?? f.value,
-      color: params.get(`${f.id}_color`) ?? palette[i % palette.length],
+      color: params.get(`${f.id}_color`) || f.color || palette[i % palette.length],
       visible: params.get(`${f.id}_hide`) !== "1",
     }));
   }

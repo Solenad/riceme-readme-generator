@@ -502,7 +502,7 @@ export async function GET(request: Request) {
       "Cache-Control":
         process.env.NODE_ENV === "development"
           ? "no-store"
-          : "public, max-age=1800, s-maxage=1800",
+          : "public, max-age=60, s-maxage=60, stale-while-revalidate=300",
     },
   });
 }

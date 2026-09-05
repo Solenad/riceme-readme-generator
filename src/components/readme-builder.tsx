@@ -294,12 +294,6 @@ export function ReadmeBuilder() {
 
   useEffect(() => {
     if (profileQuery.data) {
-      const mapped = mapProfileToFields(profileQuery.data);
-      setFields((prev) =>
-        prev.map((f) =>
-          mapped[f.id] !== undefined ? { ...f, value: mapped[f.id] } : f,
-        ),
-      );
       toast.success(`Fetched profile for ${fetchTarget}`, { duration: 2000 });
     }
   }, [profileQuery.data, fetchTarget]);
