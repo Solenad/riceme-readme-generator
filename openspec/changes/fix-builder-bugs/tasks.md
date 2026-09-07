@@ -17,6 +17,6 @@
 ## 4. Verification
 
 - [x] 4.1 Run `npm run build` to verify no type errors
-- [ ] 4.2 Test color resolution with empty color strings in URL
+- [x] 4.2 Test color resolution with empty color strings in URL
 - [ ] 4.3 Test profile fetch does not overwrite info rows
 - [ ] 4.4 Verify cache headers in production build
