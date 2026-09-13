@@ -69,13 +69,13 @@ function wrapText(value: string, maxChars: number): string[] {
 
 async function fetchStats(username: string) {
   try {
+    const headers: Record<string, string> = { "User-Agent": "RiceMe" };
+    if (process.env.GITHUB_TOKEN) {
+      headers["Authorization"] = `Bearer ${process.env.GITHUB_TOKEN}`;
+    }
     const [uRes, rRes] = await Promise.all([
-      fetch(`https://api.github.com/users/${username}`, {
-        headers: { "User-Agent": "RiceMe" },
-      }),
-      fetch(`https://api.github.com/users/${username}/repos?per_page=100`, {
-        headers: { "User-Agent": "RiceMe" },
-      }),
+      fetch(`https://api.github.com/users/${username}`, { headers }),
+      fetch(`https://api.github.com/users/${username}/repos?per_page=100`, { headers }),
     ]);
     const u = await uRes.json();
     const repos = await rRes.json();
@@ -502,7 +502,7 @@ export async function GET(request: Request) {
       "Cache-Control":
         process.env.NODE_ENV === "development"
           ? "no-store"
-          : "public, max-age=1800, s-maxage=1800",
+          : "public, max-age=60, s-maxage=60, stale-while-revalidate=300",
     },
   });
 }

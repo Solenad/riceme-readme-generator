@@ -93,14 +93,15 @@ function yearsSince(dateStr: string): string {
 }
 
 async function fetchProfile(username: string) {
-  const res = await fetch(`https://api.github.com/users/${username}`, {
-    headers: { "User-Agent": "RiceMe" },
-  });
+  const res = await fetch(
+    `/api/github-profile?username=${encodeURIComponent(username)}`,
+  );
   if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const msg = body?.error ?? `GitHub API error (${res.status})`;
     if (res.status === 404) throw new Error("User not found on GitHub");
-    if (res.status === 403)
-      throw new Error("Rate limited by GitHub. Try again later.");
-    throw new Error(`GitHub API error (${res.status})`);
+    if (res.status === 429) throw new Error("Rate limited by GitHub. Try again later.");
+    throw new Error(msg);
   }
   return res.json();
 }
@@ -294,12 +295,6 @@ export function ReadmeBuilder() {
 
   useEffect(() => {
     if (profileQuery.data) {
-      const mapped = mapProfileToFields(profileQuery.data);
-      setFields((prev) =>
-        prev.map((f) =>
-          mapped[f.id] !== undefined ? { ...f, value: mapped[f.id] } : f,
-        ),
-      );
       toast.success(`Fetched profile for ${fetchTarget}`, { duration: 2000 });
     }
   }, [profileQuery.data, fetchTarget]);

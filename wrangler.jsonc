@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "main": ".open-next/worker.js",
-  "name": "riceme-readme-generator",
+  "name": "dev-riceme-readme-generator",
   "compatibility_date": "2026-05-29",
   "compatibility_flags": ["nodejs_compat"],
   "assets": {
@@ -11,7 +11,7 @@
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
-      "service": "riceme-readme-generator",
+      "service": "dev-riceme-readme-generator",
     },
   ],
   "images": {
